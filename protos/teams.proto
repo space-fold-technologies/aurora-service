@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option go_package = ".;teams";
+
+message CreateTeamOrder {
+    string name = 1;
+    string description = 2;
+}
+
+message TeamEntry {
+    string name = 1;
+    string description = 2;
+}
+
+message Teams {
+    repeated TeamEntry entries = 1;
+}

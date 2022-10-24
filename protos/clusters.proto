@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+option go_package = ".;clusters";
+
+
+
+message CreateClusterOrder {
+    string name = 1;
+    string description = 2;
+    repeated string teams = 3;
+    Type type = 4;
+    string namespace = 5;
+    string address = 6;
+
+    enum Type {
+        DOCKER_SWARM=0;
+        KUBERNETES_CLUSTER=1;
+        PODMAN_SWARM=2;
+    }
+}
+
+message UpdateClusterOrder {
+    string name = 1;
+    string description = 2;
+    repeated string teams = 3;
+}
+
+message NodeDetails {
+    string name = 1;
+    string type = 2;
+    string address = 3;
+}
+
+message ClusterDetails {
+    string name = 1;
+    string address = 2;
+    string type = 3;
+    repeated string teams = 4;
+    string namespace = 5;
+    repeated NodeDetails nodes = 6;
+}
+
+message Clusters{
+    repeated ClusterDetails entries = 1;
+}
+
+
+
+

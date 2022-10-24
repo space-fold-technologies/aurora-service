@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option go_package = ".;environments";
+
+message EnvEntry {
+    string key = 1;
+    string value = 2;
+}
+
+message CreateEnvEntryOrder {
+    Scope scope = 1;
+    string target = 2;
+    repeated EnvEntry entries = 3;
+
+    enum Scope {
+        CLUSTER = 0;
+        NODE = 1;
+        CONTAINER = 2;
+    }
+}
+
+message EnvSet {
+    repeated EnvEntry entries = 1;
+}
+
+message RemoveEnvEntryOrder {
+    repeated string keys = 1;
+}

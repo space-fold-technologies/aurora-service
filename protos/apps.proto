@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+option go_package = ".;apps";
+
+message RegistryCredentials {
+    string username = 1;
+    string password = 2;
+    bool temporary = 3;
+}
+
+message DeploymentPass {
+    string identifier = 1;
+    bytes token = 2;
+}
+
+message CreateAppOrder {
+    string name = 1;
+    string description = 2;
+    string cluster = 3;
+    string team = 4;
+    int32 scale = 5;
+}
+
+message UpdateAppOrder {
+    string name = 1;
+    string description = 2;
+    int32 scale = 3;
+}
+
+message DeployAppOrder {
+    string name = 1;
+    string image_uri = 2;
+    RegistryCredentials credentials = 3;
+}
+
+message AppDetails {
+    string name = 1;
+    string description = 2;
+    string team = 3;
+    string cluster = 4;
+    repeated ContainerEntry containers = 5; 
+}
+
+message AppEntry {
+    string name = 1;
+    int32 scale = 2;
+}
+
+message ContainerEntry {
+    string identifier = 1;
+    string ip = 2;
+    int32 family = 3;
+}
+
+message AppSummary {
+    repeated AppEntry entry = 1;
+}

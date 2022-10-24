@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+option go_package = ".;users";
+
+message CreateUserOrder {
+    string name = 1;
+    string email = 2;
+    string password = 3;
+}
+
+message ResetUserOrder {
+    string email = 1;
+    string otp = 2;
+    string password = 3;
+}
+
+message UserDetails {
+    string name = 1;
+    string email = 2;
+    repeated string teams = 3;
+}
+
+message Users {
+    repeated UserDetails users = 1;
+}
+

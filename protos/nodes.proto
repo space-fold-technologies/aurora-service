@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option go_package = ".;nodes";
+
+message CreateNodeOrder {
+    string name = 1;
+    string type = 2;
+    string description = 3;
+    string cluster = 4;
+    string address = 5;
+}
+
+message UpdateNodeOrder {
+    string name = 1;
+    string description = 2;
+}
+
+message Entry {
+    string name = 1;
+    string description = 2;
+    string address = 3;
+    int32 containers = 4;
+}
+message Nodes {
+    string cluster = 1;
+    string type = 2;
+    repeated Entry entries = 3;
+}
