@@ -27,28 +27,28 @@ func (nc *NodeController) Name() string {
 func (nc *NodeController) Initialize(RouteRegistry registry.RouterRegistry) {
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/create",
-		[]string{"node.create"},
+		[]string{"nodes.create"},
 		"POST",
 		nc.create,
 	)
 
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/update",
-		[]string{"node.update"},
+		[]string{"nodes.update"},
 		"PUT",
 		nc.update,
 	)
 
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/{cluster-name}/list",
-		[]string{"node.update"},
+		[]string{"nodes.information"},
 		"GET",
 		nc.list,
 	)
 
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/{node-name}",
-		[]string{"node.remove"},
+		[]string{"nodes.remove"},
 		"DELETE",
 		nc.remove,
 	)

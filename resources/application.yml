@@ -1,0 +1,7 @@
+name: aurora-service
+version: 1.0.0
+repository: aurora-service
+environment: 'development'
+commit_hash: d1daf169f08647c35ffc13e9da612f57cfefa54f
+build_date: 'Sun Sept  19 14:24:43 MDT 2022'
+build_epoch_sec: '1504470283'

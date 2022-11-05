@@ -138,20 +138,31 @@ func (dp *DockerProvider) Shell(ws *websocket.Conn, properties *providers.Termin
 	return dp.attach(ctx, ws, properties, container)
 }
 
-func (dp *DockerProvider) Initialize() (string, error) {
+func (dp *DockerProvider) Initialize(ListenAddr, AvertiseAddr string) (string, error) {
 	ctx := context.Background()
 	defer ctx.Done()
 	return dp.dkr.SwarmInit(ctx, swarm.InitRequest{
-		ListenAddr:       "",
-		AdvertiseAddr:    "",
-		DataPathAddr:     "",
-		DataPathPort:     0,
-		ForceNewCluster:  true,
-		Spec:             swarm.Spec{},
+		ListenAddr:      ListenAddr,
+		AdvertiseAddr:   AvertiseAddr,
+		DataPathAddr:    AvertiseAddr,
+		DataPathPort:    0,
+		ForceNewCluster: true,
+		Spec: swarm.Spec{Orchestration: swarm.OrchestrationConfig{TaskHistoryRetentionLimit: func(n int64) *int64 { return &n }(5)},
+			Raft: swarm.RaftConfig{
+				SnapshotInterval: 10000,
+				KeepOldSnapshots: func(n uint64) *uint64 { return &n }(0),
+			},
+			Dispatcher: swarm.DispatcherConfig{
+				HeartbeatPeriod: 5 * time.Second,
+			},
+			EncryptionConfig: swarm.EncryptionConfig{
+				AutoLockManagers: true,
+			},
+			CAConfig: swarm.CAConfig{NodeCertExpiry: 90 * 24 * time.Hour}},
 		AutoLockManagers: true,
 		Availability:     swarm.NodeAvailabilityActive,
-		DefaultAddrPool:  []string{},
-		SubnetSize:       0,
+		DefaultAddrPool:  []string{"10.0.0.0/8"},
+		SubnetSize:       24,
 	})
 }
 
@@ -166,14 +177,18 @@ func (dp *DockerProvider) Join(order *providers.JoinOrder) (*providers.NodeDetai
 			existingNodes[node.ID] = true
 		}
 		if err := dp.dkr.SwarmJoin(ctx, swarm.JoinRequest{
-			ListenAddr:    "",
-			AdvertiseAddr: "",
+			ListenAddr:    order.ListenAddress,
+			AdvertiseAddr: order.ClusterAddress,
 			DataPathAddr:  "",
 			RemoteAddrs:   []string{},
 			JoinToken:     order.Token,
 			Availability:  swarm.NodeAvailabilityActive,
-		}); err != nil {
+		}); err != nil && !strings.Contains(err.Error(), "already part of") {
 			return nil, err
+		} else if strings.Contains(err.Error(), "already part of") {
+			for k := range existingNodes {
+				delete(existingNodes, k)
+			}
 		}
 		if nodes, err := dp.dkr.NodeList(ctx, types.NodeListOptions{}); err != nil {
 			return nil, err

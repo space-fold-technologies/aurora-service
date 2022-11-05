@@ -2,6 +2,7 @@ package apps
 
 import (
 	"context"
+	"encoding/base64"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,27 +54,31 @@ func (as *AppService) SetupDeployment(order *DeployAppOrder) (*DeploymentPass, e
 	return pass, nil
 }
 
-func (as *AppService) Deploy(ws *websocket.Conn, name, identifier, token string, properties *providers.TerminalProperties) error {
-	if uri, err := as.repository.FetchImageURI(identifier); err != nil {
+func (as *AppService) Deploy(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+	if uri, err := as.repository.FetchImageURI(properties.Identifier); err != nil {
 		return err
-	} else if vars, err := as.repository.FetchEnvVars(name); err != nil {
+	} else if vars, err := as.repository.FetchEnvVars(properties.Name); err != nil {
 		return err
 	} else {
 		order := &providers.Order{
-			Identifier: identifier,
+			Identifier: properties.Identifier,
 			URI:        uri,
 			Variables:  as.variables(vars),
 		}
-		if len(token) > 0 {
-			credentials := &RegistryCredentials{}
-			if content, err := as.hasher.Decrypt([]byte(token)); err != nil {
-				return err
-			} else if err := proto.Unmarshal(content, credentials); err != nil {
+		if len(properties.Token) > 0 {
+			if data, err := base64.URLEncoding.DecodeString(properties.Token); err != nil {
 				return err
 			} else {
-				order.Username = credentials.GetUsername()
-				order.Password = credentials.GetPassword()
-				order.Temporary = credentials.GetTemporary()
+				credentials := &RegistryCredentials{}
+				if content, err := as.hasher.Decrypt(data); err != nil {
+					return err
+				} else if err := proto.Unmarshal(content, credentials); err != nil {
+					return err
+				} else {
+					order.Username = credentials.GetUsername()
+					order.Password = credentials.GetPassword()
+					order.Temporary = credentials.GetTemporary()
+				}
 			}
 		}
 		return as.provider.Deploy(
@@ -81,7 +86,7 @@ func (as *AppService) Deploy(ws *websocket.Conn, name, identifier, token string,
 			properties,
 			order,
 			func(ctx context.Context, report *providers.Report) error {
-				return as.processReport(ctx, identifier, name, report)
+				return as.processReport(ctx, properties.Identifier, properties.Name, report)
 			})
 	}
 }
@@ -130,6 +135,7 @@ func (as *AppService) Update(order *UpdateAppOrder) error {
 }
 
 func (as *AppService) List(cluster string) (*AppSummary, error) {
+	logging.GetInstance().Infof("Getting apps list in cluster: %s", cluster)
 	if result, err := as.repository.List(cluster); err != nil {
 		return &AppSummary{}, err
 	} else {
@@ -140,7 +146,7 @@ func (as *AppService) List(cluster string) (*AppSummary, error) {
 				Scale: int32(entry.Scale),
 			})
 		}
-		return &AppSummary{}, nil
+		return apps, nil
 	}
 }
 

@@ -21,7 +21,10 @@ func NewService(provider providers.Provider, repository NodeRepository) *NodeSer
 func (ns *NodeService) Create(order *CreateNodeOrder) error {
 	if info, err := ns.repository.FetchClusterInfo(order.GetCluster()); err != nil {
 		return err
-	} else if details, err := ns.provider.Join(&providers.JoinOrder{ClusterAddress: info.Address, IP: order.GetAddress(), Token: info.Token}); err != nil {
+	} else if details, err := ns.provider.Join(&providers.JoinOrder{
+		ClusterAddress: info.Address,
+		ListenAddress:  order.GetAddress(),
+		Token:          info.Token}); err != nil {
 		return err
 	} else {
 		return ns.repository.Create(&NodeEntry{

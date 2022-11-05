@@ -51,6 +51,10 @@ func (a *ControllerBase) GetPrincipals(r *http.Request) *security.Claims {
 	return claims
 }
 
+func (a *ControllerBase) GetHeader(key string, r *http.Request) string {
+	return r.Header.Get(key)
+}
+
 func (a *ControllerBase) ProxyRequest(w http.ResponseWriter, r *http.Request, Base, Path string) {
 	url, _ := url.Parse(Base)
 	proxy := httputil.NewSingleHostReverseProxy(url)
@@ -78,22 +82,19 @@ func (a *ControllerBase) Respond(w http.ResponseWriter, data interface{}, status
 
 func (a *ControllerBase) BadRequest(w http.ResponseWriter, Err error) int {
 	payload := &ErrorMessage{Error: "Bad Request", Detail: Err.Error(), Code: http.StatusBadRequest, OccurredAt: time.Now().Format(time.RFC3339)}
-	a.Respond(w, payload, http.StatusBadRequest)
-	return 0
+	return a.Respond(w, payload, http.StatusBadRequest)
 }
 
 func (a *ControllerBase) ServiceFailure(w http.ResponseWriter, Err error) int {
 	payload := &ErrorMessage{Error: "Service Expectation Failure", Detail: Err.Error(), Code: http.StatusExpectationFailed, OccurredAt: time.Now().Format(time.RFC3339)}
-	a.Respond(w, payload, http.StatusExpectationFailed)
-	return 0
+	return a.Respond(w, payload, http.StatusExpectationFailed)
 }
 
 func (a *ControllerBase) Created(w http.ResponseWriter, Msg string) int {
 	payload := map[string]string{}
 	payload["occurred_at"] = time.Now().Format(time.RFC3339)
 	payload["message"] = Msg
-	a.Respond(w, payload, http.StatusCreated)
-	return 0
+	return a.Respond(w, payload, http.StatusCreated)
 }
 
 func (a *ControllerBase) OK(w http.ResponseWriter, data proto.Message) {

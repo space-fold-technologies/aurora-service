@@ -13,8 +13,10 @@ type Mount struct {
 
 type TerminalProperties struct {
 	Identifier     string
+	Isolated       bool
 	Name           string
 	Width          int
 	Heigth         int
 	ClientTerminal string
+	Token          string
 }

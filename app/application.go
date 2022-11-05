@@ -1,7 +1,7 @@
 package app
 
 import (
-	"fmt"
+	"path/filepath"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/configuration"
 	"github.com/space-fold-technologies/aurora-service/app/core/database"
@@ -12,6 +12,7 @@ import (
 	"github.com/space-fold-technologies/aurora-service/app/core/server"
 	"github.com/space-fold-technologies/aurora-service/app/core/server/http/controllers"
 	"github.com/space-fold-technologies/aurora-service/app/domain/apps"
+	"github.com/space-fold-technologies/aurora-service/app/domain/authorization"
 	"github.com/space-fold-technologies/aurora-service/app/domain/clusters"
 	"github.com/space-fold-technologies/aurora-service/app/domain/environments"
 	"github.com/space-fold-technologies/aurora-service/app/domain/nodes"
@@ -24,6 +25,7 @@ type ServiceResources struct {
 	dataSource      database.DataSource
 	parameters      configuration.Configuration
 	passwordHandler security.PasswordHandler
+	tokenHandler    security.TokenHandler
 	hasher          security.HashHandler
 	provider        providers.Provider
 }
@@ -31,11 +33,13 @@ type ServiceResources struct {
 func ProduceServiceResources(
 	server *server.ServerCore,
 	parameters configuration.Configuration,
+	tokenHandler security.TokenHandler,
 	hasher security.HashHandler) *ServiceResources {
 	return &ServiceResources{
 		server:          server,
 		parameters:      parameters,
 		hasher:          hasher,
+		tokenHandler:    tokenHandler,
 		passwordHandler: security.NewPasswordHandler(parameters.EncryptionParameters),
 	}
 }
@@ -47,7 +51,7 @@ func (sr *ServiceResources) Initialize() {
 }
 
 func (sr *ServiceResources) providers(name string) providers.Provider {
-	if name == "DOCKER-SWARN" {
+	if name == "DOCKER-SWARM" {
 		return docker.NewProvider(sr.plugin())
 	}
 	return nil
@@ -64,7 +68,7 @@ func (sr *ServiceResources) createDataSource() database.DataSource {
 	return database.
 		NewBuilder().
 		EnableLogging().
-		Path(fmt.Sprintf("%s/configurations/store.db", sr.parameters.ProfileDIR)).
+		Path(filepath.Join(sr.parameters.ProfileDIR, "configurations", "store.db")).
 		Build()
 }
 
@@ -76,4 +80,10 @@ func (sr *ServiceResources) setupControllers(registry *controllers.HTTPControlle
 	registry.AddController(nodes.NewController(nodes.NewService(sr.provider, nodes.NewRepository(sr.dataSource))))
 	registry.AddController(teams.NewController(teams.NewService(teams.NewRepository(sr.dataSource))))
 	registry.AddController(users.NewController(users.NewService(users.NewRepository(sr.dataSource), sr.passwordHandler)))
+	registry.AddController(authorization.NewController(authorization.NewService(
+		authorization.NewRepository(sr.dataSource),
+		sr.passwordHandler,
+		sr.tokenHandler,
+		sr.parameters.SessionDuration,
+	)))
 }

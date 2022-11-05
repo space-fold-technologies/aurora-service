@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

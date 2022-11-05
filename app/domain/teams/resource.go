@@ -27,21 +27,21 @@ func (tc *TeamController) Name() string {
 func (tc *TeamController) Initialize(RouteRegistry registry.RouterRegistry) {
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/create",
-		[]string{"team.create"},
+		[]string{"teams.create"},
 		"POST",
 		tc.create,
 	)
 
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/list",
-		[]string{"team.read"},
+		[]string{"teams.information"},
 		"GET",
 		tc.list,
 	)
 
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/{name}/remove",
-		[]string{"team.remove"},
+		[]string{"teams.remove"},
 		"DELETE",
 		tc.remove,
 	)

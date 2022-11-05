@@ -17,7 +17,7 @@ import (
 type RouteEntry struct {
 	Path         string
 	IsRestricted bool
-	Roles        []string
+	Permissions  []string
 	Method       string
 	HttpHandler  func(http.ResponseWriter, *http.Request)
 }
@@ -28,16 +28,16 @@ type RegistryRoute struct {
 	Method            string
 	RegularExpression *regexp.Regexp
 	IsRestricted      bool
-	Roles             []string
+	Permissions       []string
 }
 
-func NewRegistryRoute(Path, ExpressionValue, Method string, IsRestricted bool, Roles []string) *RegistryRoute {
+func NewRegistryRoute(Path, ExpressionValue, Method string, IsRestricted bool, Permissions []string) *RegistryRoute {
 	registryRoute := &RegistryRoute{
 		Path:            Path,
 		ExpressionValue: ExpressionValue,
 		Method:          Method,
 		IsRestricted:    IsRestricted,
-		Roles:           Roles,
+		Permissions:     Permissions,
 	}
 	registryRoute.init()
 	return registryRoute
@@ -64,13 +64,13 @@ type AuthorizedRouterRegistry struct {
 	Router         *mux.Router
 	routeEntries   []*RouteEntry
 	registryRoutes []*RegistryRoute
-	TokenVerifier  security.TokenVerifier
+	TokenHandler   security.TokenHandler
 }
 
-func NewRouteRegistry(Router *mux.Router, TokenVerifier security.TokenVerifier) RouterRegistry {
+func NewRouteRegistry(Router *mux.Router, TokenHandler security.TokenHandler) RouterRegistry {
 	authorizedRouterRegistry := &AuthorizedRouterRegistry{
-		Router:        Router,
-		TokenVerifier: TokenVerifier,
+		Router:       Router,
+		TokenHandler: TokenHandler,
 	}
 	authorizedRouterRegistry.setUp()
 	return authorizedRouterRegistry
@@ -90,7 +90,7 @@ func (ar *AuthorizedRouterRegistry) Add(
 	ar.routeEntries = append(ar.routeEntries, &RouteEntry{
 		Path:         Path,
 		IsRestricted: IsRestricted,
-		Roles:        []string{},
+		Permissions:  []string{},
 		Method:       Method,
 		HttpHandler:  HttpHandler,
 	})
@@ -98,23 +98,24 @@ func (ar *AuthorizedRouterRegistry) Add(
 
 func (ar *AuthorizedRouterRegistry) AddRestricted(
 	Path string,
-	Roles []string,
+	Permissions []string,
 	Method string,
 	HttpHandler func(http.ResponseWriter, *http.Request)) {
 	ar.routeEntries = append(ar.routeEntries, &RouteEntry{
 		Path:         Path,
 		IsRestricted: true,
-		Roles:        Roles,
+		Permissions:  Permissions,
 		Method:       Method,
 		HttpHandler:  HttpHandler,
 	})
 }
 
 func (ar *AuthorizedRouterRegistry) Initialize() {
+	logging.GetInstance().Info("Setting Up controller routes")
 	for _, entry := range ar.routeEntries {
 		r := ar.Router.HandleFunc(entry.Path, entry.HttpHandler).Methods(entry.Method)
 		expr, _ := r.GetPathRegexp()
-		ar.registryRoutes = append(ar.registryRoutes, NewRegistryRoute(entry.Path, expr, entry.Method, entry.IsRestricted, entry.Roles))
+		ar.registryRoutes = append(ar.registryRoutes, NewRegistryRoute(entry.Path, expr, entry.Method, entry.IsRestricted, entry.Permissions))
 		logging.GetInstance().Info("ROUTE ->->", entry.Path)
 	}
 	ar.Router.Use(func(next http.Handler) http.Handler {
@@ -122,6 +123,14 @@ func (ar *AuthorizedRouterRegistry) Initialize() {
 			ar.verifyCall(next, w, r)
 		})
 	})
+}
+
+func (ar *AuthorizedRouterRegistry) fetchAuthorizationHeader(r *http.Request) string {
+	tokenHeader := r.Header.Get("Authorization")
+	if len(tokenHeader) == 0 {
+		tokenHeader = r.Header.Values("Authorization")[0]
+	}
+	return tokenHeader
 }
 
 func (ar *AuthorizedRouterRegistry) verifyCall(next http.Handler, w http.ResponseWriter, r *http.Request) {
@@ -134,7 +143,7 @@ func (ar *AuthorizedRouterRegistry) verifyCall(next http.Handler, w http.Respons
 		}
 	}
 
-	tokenHeader := r.Header.Get("Authorization") //Grab the token from the header
+	tokenHeader := ar.fetchAuthorizationHeader(r) //Grab the token from the header
 	splitTokenHeader := strings.Split(tokenHeader, " ")
 	if len(splitTokenHeader) < 2 { //Token is missing, returns with error code 401 Unauthorized
 		w.WriteHeader(http.StatusUnauthorized)
@@ -147,7 +156,7 @@ func (ar *AuthorizedRouterRegistry) verifyCall(next http.Handler, w http.Respons
 		})
 		return
 	}
-	claims, err := ar.TokenVerifier.VerifyToken(splitTokenHeader[1])
+	claims, err := ar.TokenHandler.VerifyToken(splitTokenHeader[1])
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Header().Add("Content-Type", "application/json")
@@ -159,10 +168,10 @@ func (ar *AuthorizedRouterRegistry) verifyCall(next http.Handler, w http.Respons
 		})
 		return
 	}
-	roles := ar.matchRoute(requestPath, r.Method) // Then check if the role in the claim is in the list of roles
+	permissions := ar.matchRoute(requestPath, r.Method) // Then check if the role in the claim is in the list of roles
 
 	logging.GetInstance().Info("MATCHED PATH : " + requestPath)
-	if ar.isClaimValid(roles, claims) {
+	if ar.isClaimValid(permissions, claims) {
 		context.Set(r, "principals", claims.ToMap())
 		next.ServeHTTP(w, r) //proceed in the middleware chain!
 	} else {
@@ -177,23 +186,23 @@ func (ar *AuthorizedRouterRegistry) verifyCall(next http.Handler, w http.Respons
 	}
 }
 
-func (ar *AuthorizedRouterRegistry) matchRoute(Path, Method string) (Roles []string) {
+func (ar *AuthorizedRouterRegistry) matchRoute(Path, Method string) (Permissions []string) {
 	for _, value := range ar.registryRoutes {
 		if value.IsMatch(Path, Method) {
-			return value.Roles
+			return value.Permissions
 		}
 	}
 	return []string{}
 }
 
-func (ar *AuthorizedRouterRegistry) isClaimValid(RouteRoles []string, Claim *security.Claims) bool {
-	if len(RouteRoles) == 0 {
+func (ar *AuthorizedRouterRegistry) isClaimValid(Permissions []string, Claim *security.Claims) bool {
+	if len(Permissions) == 0 {
 		return true
 	}
 
-	for _, role := range Claim.Roles {
-		for _, routeRole := range RouteRoles {
-			if strings.TrimSpace(role) == strings.TrimSpace(routeRole) {
+	for _, role := range Claim.Permissions {
+		for _, permission := range Permissions {
+			if strings.TrimSpace(role) == strings.TrimSpace(permission) {
 				return true
 			}
 		}

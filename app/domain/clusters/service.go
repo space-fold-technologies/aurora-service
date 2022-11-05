@@ -32,6 +32,7 @@ func (cs *ClusterService) Create(order *CreateClusterOrder) error {
 			Type:        order.GetType().String(),
 			Address:     order.GetAddress(),
 			Token:       token,
+			Namespace:   order.GetNamespace(),
 			Teams:       order.GetTeams(),
 		})
 	})
@@ -94,7 +95,7 @@ func (cs *ClusterService) registeCluster(name, address string, clusterType Creat
 	if clusterType == CreateClusterOrder_KUBERNETES_CLUSTER {
 		return errors.New("hi, we are not supporting kubernetes at this time :| sorry")
 	} else if clusterType == CreateClusterOrder_DOCKER_SWARM {
-		if token, err := cs.provider.Initialize(); err != nil {
+		if token, err := cs.provider.Initialize("0.0.0.0:2377", address); err != nil {
 			return err
 		} else {
 			return callback(token)

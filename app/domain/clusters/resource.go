@@ -1,7 +1,7 @@
 package clusters
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/server/http/controllers"
@@ -27,28 +27,28 @@ func (cc *ClusterController) Name() string {
 func (cc *ClusterController) Initialize(RouteRegistry registry.RouterRegistry) {
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/create",
-		[]string{"cluster.create"},
+		[]string{"clusters.create"},
 		"POST",
 		cc.create,
 	)
 
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/update",
-		[]string{"cluster.update"},
+		[]string{"clusters.update"},
 		"PUT",
 		cc.update,
 	)
 
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/list",
-		[]string{"cluster.read"},
+		[]string{"clusters.information"},
 		"GET",
 		cc.list,
 	)
 
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/{name}/remove",
-		[]string{"cluster.remove"},
+		[]string{"clusters.remove"},
 		"DELETE",
 		cc.remove,
 	)
@@ -57,7 +57,7 @@ func (cc *ClusterController) Initialize(RouteRegistry registry.RouterRegistry) {
 
 func (cc *ClusterController) create(w http.ResponseWriter, r *http.Request) {
 	order := &CreateClusterOrder{}
-	if data, err := ioutil.ReadAll(r.Body); err != nil {
+	if data, err := io.ReadAll(r.Body); err != nil {
 		cc.BadRequest(w, err)
 	} else if err = proto.Unmarshal(data, order); err != nil {
 		cc.BadRequest(w, err)
@@ -70,7 +70,7 @@ func (cc *ClusterController) create(w http.ResponseWriter, r *http.Request) {
 
 func (cc *ClusterController) update(w http.ResponseWriter, r *http.Request) {
 	order := &UpdateClusterOrder{}
-	if data, err := ioutil.ReadAll(r.Body); err != nil {
+	if data, err := io.ReadAll(r.Body); err != nil {
 		cc.BadRequest(w, err)
 	} else if err = proto.Unmarshal(data, order); err != nil {
 		cc.BadRequest(w, err)

@@ -80,7 +80,7 @@ type PluginParameterInjector interface {
 }
 
 type JoinOrder struct {
-	IP             string
+	ListenAddress  string
 	ClusterAddress string
 	Token          string
 }
@@ -95,7 +95,7 @@ type Provider interface {
 	Stop(container string) error
 	Log(ws *websocket.Conn, properties *TerminalProperties, container string) error
 	Shell(ws *websocket.Conn, properties *TerminalProperties, container string) error
-	Initialize() (string, error)
+	Initialize(ListenAddr, AvertiseAddr string) (string, error)
 	Join(order *JoinOrder) (*NodeDetails, error)
 	Leave(nodeId string) error
 }
