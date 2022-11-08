@@ -77,7 +77,8 @@ func (dp *DockerProvider) Deploy(ws *websocket.Conn, properties *providers.Termi
 			ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(2*time.Second))
 		}
 	}()
-	if digest, err := dp.pullImage(ctx, ws, order.URI, order.Username, order.Password); err != nil {
+	retries := 0
+	if digest, err := dp.pullImage(ctx, ws, order.URI, order.Username, order.Password, &retries); err != nil {
 		return err
 	} else if serviceId, err := dp.createService(ctx, ws, order, digest); err != nil {
 		return err
@@ -213,12 +214,17 @@ func (dp *DockerProvider) Leave(nodeId string) error {
 	return dp.dkr.NodeRemove(ctx, nodeId, types.NodeRemoveOptions{Force: true})
 }
 
-func (dp *DockerProvider) pullImage(ctx context.Context, ws *websocket.Conn, image, username, password string) (string, error) {
+func (dp *DockerProvider) pullImage(ctx context.Context, ws *websocket.Conn, image, username, password string, retries *int) (string, error) {
 	logging.GetInstance().Infof("Pulling docker image : %s", image)
 	if stream, err := dp.dkr.ImagePull(ctx, image, types.ImagePullOptions{
 		RegistryAuth: dp.encodeCredentials(username, password),
 	}); err != nil {
 		logging.GetInstance().Error(err)
+		if strings.Contains(strings.ToLower(err.Error()), "timeout") && *retries <= MAX_RETRIES {
+			time.Sleep(5 * time.Second)
+			*retries++
+			return dp.pullImage(ctx, ws, image, username, password, retries)
+		}
 		return "", err
 	} else {
 		defer stream.Close()
