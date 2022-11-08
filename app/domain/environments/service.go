@@ -24,8 +24,16 @@ func (es *EnvironmentService) Remove(order *RemoveEnvEntryOrder) error {
 	return es.repository.Remove(order.GetKeys())
 }
 
-func (es *EnvironmentService) List(principals *security.Claims) (*EnvSet, error) {
-	return &EnvSet{}, nil
+func (es *EnvironmentService) List(principals *security.Claims, scope, target string) (*EnvSet, error) {
+	if list, err := es.repository.List(scope, target); err != nil {
+		return nil, err
+	} else {
+		entries := make([]*EnvEntry, 0)
+		for _, entry := range list {
+			entries = append(entries, &EnvEntry{Key: entry.Key, Value: entry.Value})
+		}
+		return &EnvSet{Entries: entries}, nil
+	}
 }
 func (es *EnvironmentService) from(entries []*EnvEntry) []*Entry {
 	vars := make([]*Entry, 0)

@@ -33,7 +33,7 @@ func (ec *EnvironmentController) Initialize(RouteRegistry registry.RouterRegistr
 	)
 
 	RouteRegistry.AddRestricted(
-		BASE_PATH+"/{env-scope}/{target-name}/list",
+		BASE_PATH+"/{scope}/{target}/list",
 		[]string{"environments.information"},
 		"GET",
 		ec.list,
@@ -63,7 +63,9 @@ func (ec *EnvironmentController) create(w http.ResponseWriter, r *http.Request) 
 
 func (ec *EnvironmentController) list(w http.ResponseWriter, r *http.Request) {
 	principals := ec.GetPrincipals(r)
-	if results, err := ec.service.List(principals); err != nil {
+	scope := ec.GetVar("scope", r)
+	target := ec.GetVar("target", r)
+	if results, err := ec.service.List(principals, scope, target); err != nil {
 		ec.ServiceFailure(w, err)
 	} else {
 		ec.OK(w, results)
