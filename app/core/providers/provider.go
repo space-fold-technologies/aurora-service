@@ -53,6 +53,8 @@ func (o *Order) Image(digest string) string {
 	var noTag string
 	if i := strings.LastIndex(o.URI, ":"); i >= 0 {
 		noTag = o.URI[0:i]
+	} else {
+		noTag = o.URI
 	}
 	return noTag + "@" + digest
 }
@@ -63,6 +65,9 @@ func (o *Order) Ports() []uint {
 
 func (o *Order) Replicas() *uint64 {
 	value := uint64(o.Scale)
+	if value == 0 {
+		value = 1
+	}
 	return &value
 }
 

@@ -59,11 +59,16 @@ func (as *AppService) Deploy(ws *websocket.Conn, properties *providers.TerminalP
 		return err
 	} else if vars, err := as.repository.FetchEnvVars(properties.Name); err != nil {
 		return err
+	} else if app, err := as.repository.FetchDetails(properties.Name); err != nil {
+		return err
 	} else {
 		order := &providers.Order{
+			Name:       app.Name,
 			Identifier: properties.Identifier,
 			URI:        uri,
 			Variables:  as.variables(vars),
+			Volumes:    []providers.Mount{},
+			Scale:      uint(app.Scale),
 		}
 		if len(properties.Token) > 0 {
 			if data, err := base64.URLEncoding.DecodeString(properties.Token); err != nil {
@@ -178,6 +183,7 @@ func (as *AppService) processReport(ctx context.Context, identifier, name string
 		Identifier: identifier,
 		Status:     report.Status,
 		Report:     report.Message,
+		ServiceID:  report.ServiceID,
 		UpdatedAt:  &completedAt,
 	}); err != nil {
 		return err

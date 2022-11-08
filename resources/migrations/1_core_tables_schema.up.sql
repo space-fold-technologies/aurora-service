@@ -54,7 +54,8 @@ CREATE TABLE deployment_tb(
    application_id INTEGER NOT NULL,
    image_uri VARCHAR(100) NOT NULL,
    report TEXT NULL,
-   status VARCHAR(15) NOT NULL,
+   service_identifier VARCHAR(36) NULL,
+   status VARCHAR(255) NOT NULL,
    added_at TIMESTAMP NOT NULL,
    completed_at TIMESTAMP,
    FOREIGN KEY(application_id) REFERENCES application_tb(id) ON DELETE CASCADE
@@ -65,7 +66,7 @@ CREATE TABLE container_tb(
    id INTEGER PRIMARY KEY AUTOINCREMENT,
    identifier VARCHAR(36) NOT NULL,
    ip VARCHAR(64) NOT NULL,
-   family INTEGER NOT NULL,
+   address_family INTEGER NOT NULL,
    application_id INTEGER NOT NULL,
    node_id INTEGER NOT NULL,
    FOREIGN KEY(application_id) REFERENCES application_tb(id) ON DELETE CASCADE,
