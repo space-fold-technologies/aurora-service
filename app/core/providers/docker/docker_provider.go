@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -21,6 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
@@ -474,78 +474,60 @@ func (dp *DockerProvider) containers(ctx context.Context, name string, limit int
 }
 
 func (dp *DockerProvider) attach(ctx context.Context, ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
-	var inout chan []byte
-	var output chan []byte
-	// commands := dp.commandsForExec("[ $(command -v bash) ] && exec bash -l || exec sh -l")
-	// if properties.ClientTerminal != "" {
-	// 	commands = append([]string{"/usr/bin/env", "TERM=" + properties.ClientTerminal}, commands...)
-	// }
-	// commands = append(commands, "/bin/bash")
+	commands := dp.commandsForExec("[ $(command -v bash) ] && exec bash -l || exec sh -l")
+	if properties.ClientTerminal != "" {
+		commands = append([]string{"/usr/bin/env", "TERM=" + properties.ClientTerminal}, commands...)
+	}
+
+	var term *terminal.Terminal
+	buffer := providers.OptionalWriter{}
+	defer func() {
+		for term != nil {
+			buffer.Disable()
+
+			if _, err := term.ReadLine(); err != nil {
+				break
+			} else {
+				//fmt.Fprintf("", "> %s\n", line)
+			}
+		}
+	}()
+	term = terminal.NewTerminal(&buffer, "")
 	options := types.ExecConfig{
 		AttachStdin:  true,
 		AttachStderr: true,
 		AttachStdout: true,
 		Detach:       false,
-		Tty:          false,
-		Cmd:          []string{"/bin/sh"},
+		Tty:          true,
+		Cmd:          commands,
 	}
+	commander := providers.ShellLogger{Base: &providers.WebSocketWriter{Conn: ws}, Term: term}
 
 	if resp, err := dp.dkr.ContainerExecCreate(ctx, container, options); err != nil {
 		return err
-	} else if connection, err := dp.dkr.ContainerExecAttach(ctx, resp.ID, types.ExecStartCheck{Detach: false, Tty: false}); err != nil {
+	} else if connection, err := dp.dkr.ContainerExecAttach(ctx, resp.ID, types.ExecStartCheck{Detach: false, Tty: true}); err != nil {
 		return err
 	} else {
 		defer connection.Close()
-		input_buffer := bufio.NewReader(connection.Reader)
-		go func(w io.WriteCloser) {
-			for {
-				data, ok := <-inout
-				logging.GetInstance().Infof("received data to send to docker")
-				if !ok {
-					fmt.Println("!ok")
-					w.Close()
-					return
-				}
-				w.Write(append(data, '\n'))
-			}
-		}(connection.Conn)
-
+		defer commander.Close()
+		errs := make(chan error, 2)
+		quit := make(chan bool)
 		go func() {
-			buffer := make([]byte, 4096)
-			for {
-				c, err := input_buffer.Read(buffer)
-				if c > 0 {
-
-					output <- buffer[:c]
-				}
-				if c == 0 {
-					output <- []byte{' '}
-				}
-				if err != nil {
-					break
-				}
+			if _, err := io.Copy(connection.Conn, &commander); err != nil {
+				errs <- err
 			}
 		}()
-
 		go func() {
-			data := <-output
-			if err := ws.WriteMessage(websocket.TextMessage, data); err != nil {
-				logging.GetInstance().Error(err)
+			defer close(quit)
+			_, err := io.Copy(&commander, connection.Conn)
+			if err != nil && err != io.EOF {
+				errs <- err
 			}
 		}()
-		for {
-			ws.CloseHandler()
-			_, message, err := ws.ReadMessage()
-			if err != nil {
-				log.Println("read:", err)
-				break
-			}
-
-			log.Printf("recv: %s", message)
-			inout <- message
-		}
+		<-quit
+		close(errs)
+		return <-errs
 	}
-	return nil
 }
 
 func (dp *DockerProvider) log(ctx context.Context, ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
@@ -574,8 +556,8 @@ func (dp *DockerProvider) log(ctx context.Context, ws *websocket.Conn, propertie
 	}
 }
 
-// func (dp *DockerProvider) commandsForExec(cmd string) []string {
-// 	source := "[ -f /home/application/apprc ] && source /home/application/apprc"
-// 	cd := fmt.Sprintf("[ -d %s ] && cd %s", defaultAppDir, defaultAppDir)
-// 	return []string{"/bin/sh", "-c", fmt.Sprintf("%s; %s; %s", source, cd, cmd)}
-// }
+func (dp *DockerProvider) commandsForExec(cmd string) []string {
+	source := "[ -f /home/application/apprc ] && source /home/application/apprc"
+	cd := fmt.Sprintf("[ -d %s ] && cd %s", defaultAppDir, defaultAppDir)
+	return []string{"/bin/sh", "-c", fmt.Sprintf("%s; %s; %s", source, cd, cmd)}
+}

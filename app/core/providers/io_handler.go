@@ -64,6 +64,11 @@ func (ow *OptionalWriter) Close() error {
 	return nil
 }
 
+func (ow *OptionalWriter) Disable() *OptionalWriter {
+	ow.disable = true
+	return ow
+}
+
 type WebSocketWriter struct {
 	*websocket.Conn
 }
