@@ -79,13 +79,13 @@ func (ac *AppController) Initialize(RouteRegistry registry.RouterRegistry) {
 		ac.update,
 	)
 	RouteRegistry.AddRestricted(
-		BASE_PATH+"/{application-name}/logs",
+		BASE_PATH+"/logs",
 		[]string{"apps.information"},
 		"GET",
 		ac.logs,
 	)
 	RouteRegistry.AddRestricted(
-		BASE_PATH+"/{application-name}/shell",
+		BASE_PATH+"/shell",
 		[]string{"apps.shell"},
 		"GET",
 		ac.shell,
@@ -120,6 +120,7 @@ func (ac *AppController) setupDeployment(w http.ResponseWriter, r *http.Request)
 	} else if err = proto.Unmarshal(data, order); err != nil {
 		ac.BadRequest(w, err)
 	} else if pass, err := ac.service.SetupDeployment(order); err != nil {
+		logging.GetInstance().Error(err)
 		ac.ServiceFailure(w, err)
 	} else {
 		ac.OK(w, pass)
@@ -161,21 +162,18 @@ func (ac *AppController) update(w http.ResponseWriter, r *http.Request) {
 
 func (ac *AppController) logs(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
-	name := ac.GetVar("application-name", r)
-
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Log(ws, name, Parse(r)); err != nil {
+	} else if err := ac.service.Log(ws, Parse(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }
 
 func (ac *AppController) shell(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
-	name := ac.GetVar("application-name", r)
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Shell(ws, name, Parse(r)); err != nil {
+	} else if err := ac.service.Shell(ws, Parse(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }

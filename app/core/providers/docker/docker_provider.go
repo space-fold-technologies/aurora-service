@@ -257,28 +257,35 @@ func (dp *DockerProvider) pullImage(ctx context.Context, ws *websocket.Conn, ima
 	}
 }
 
-func (dp *DockerProvider) fetchImageDetailsByDigest(ctx context.Context, url, digest string) (types.ImageInspect, error) {
+func (dp *DockerProvider) fetchImageDetailsByDigest(ctx context.Context, url, repoId string, retries *int) (*types.ImageInspect, error) {
 	filterArguments := filters.NewArgs()
 	filterArguments.Add("reference", fmt.Sprintf("%s*", url))
 	if summary, err := dp.dkr.ImageList(ctx, types.ImageListOptions{
+		All:     true,
 		Filters: filterArguments,
 	}); err != nil {
 		logging.GetInstance().Error(err)
-		return types.ImageInspect{}, err
+		return nil, err
 	} else {
+		if len(summary) == 0 && *retries < MAX_RETRIES {
+			time.Sleep(5 * time.Second)
+			*retries++
+			return dp.fetchImageDetailsByDigest(ctx, url, repoId, retries)
+		}
 		for _, image := range summary {
-			target := fmt.Sprintf("%s@%s", url, digest)
-			if image.RepoDigests[0] == target {
-				if inspect, _, err := dp.dkr.ImageInspectWithRaw(ctx, image.ID); err != nil {
+
+			if (image.RepoDigests != nil && image.RepoDigests[0] == repoId) || (image.RepoTags != nil && image.RepoTags[0] == url) {
+				if inspect, _, err := dp.dkr.ImageInspectWithRaw(ctx, image.ID); err != nil && *retries < MAX_RETRIES {
 					logging.GetInstance().Error(err)
-					return types.ImageInspect{}, err
+					*retries++
+					return dp.fetchImageDetailsByDigest(ctx, url, repoId, retries)
 				} else {
-					return inspect, err
+					return &inspect, err
 				}
 			}
 		}
 	}
-	return types.ImageInspect{}, nil
+	return nil, errors.New("no images found")
 }
 
 func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn, order *providers.Order, digest string) (string, error) {
@@ -314,8 +321,10 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 	ports := make([]swarm.PortConfig, 0)
 	portList := make([]uint, 0)
 	commands := make([]string, 0)
-	if image, err := dp.fetchImageDetailsByDigest(ctx, order.URI, digest); err != nil {
-		ws.WriteJSON(map[string]string{"status": "service-setup", "step": "fetching image details"})
+	retries := 0
+	if image, err := dp.fetchImageDetailsByDigest(ctx, order.URI, order.Image(digest), &retries); err != nil {
+		logging.GetInstance().Error(err)
+		return "", err
 	} else {
 		for port, _ := range image.Config.ExposedPorts {
 			ports = append(ports, swarm.PortConfig{TargetPort: uint32(port.Int()), PublishedPort: uint32(port.Int()), Protocol: swarm.PortConfigProtocol(port.Proto())})
@@ -467,55 +476,66 @@ func (dp *DockerProvider) containers(ctx context.Context, name string, limit int
 func (dp *DockerProvider) attach(ctx context.Context, ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
 	var inout chan []byte
 	var output chan []byte
-	commands := dp.commandsForExec("[ $(command -v bash) ] && exec bash -l || exec sh -l")
-	if properties.ClientTerminal != "" {
-		commands = append([]string{"/usr/bin/env", "TERM=" + properties.ClientTerminal}, commands...)
-	}
+	// commands := dp.commandsForExec("[ $(command -v bash) ] && exec bash -l || exec sh -l")
+	// if properties.ClientTerminal != "" {
+	// 	commands = append([]string{"/usr/bin/env", "TERM=" + properties.ClientTerminal}, commands...)
+	// }
+	// commands = append(commands, "/bin/bash")
 	options := types.ExecConfig{
 		AttachStdin:  true,
 		AttachStderr: true,
 		AttachStdout: true,
 		Detach:       false,
-		Tty:          true,
-		Cmd:          commands,
+		Tty:          false,
+		Cmd:          []string{"/bin/sh"},
 	}
 
 	if resp, err := dp.dkr.ContainerExecCreate(ctx, container, options); err != nil {
 		return err
-	} else if connection, err := dp.dkr.ContainerExecAttach(ctx, resp.ID, types.ExecStartCheck{Detach: false, Tty: true}); err != nil {
+	} else if connection, err := dp.dkr.ContainerExecAttach(ctx, resp.ID, types.ExecStartCheck{Detach: false, Tty: false}); err != nil {
 		return err
 	} else {
 		defer connection.Close()
+		input_buffer := bufio.NewReader(connection.Reader)
 		go func(w io.WriteCloser) {
 			for {
 				data, ok := <-inout
+				logging.GetInstance().Infof("received data to send to docker")
 				if !ok {
 					fmt.Println("!ok")
 					w.Close()
 					return
 				}
-
-				fmt.Println(string(data))
-				data = append(data, '\n')
 				w.Write(append(data, '\n'))
 			}
 		}(connection.Conn)
+
 		go func() {
 			buffer := make([]byte, 4096)
 			for {
-				c, err := connection.Reader.Read(buffer)
+				c, err := input_buffer.Read(buffer)
 				if c > 0 {
 
 					output <- buffer[:c]
+				}
+				if c == 0 {
+					output <- []byte{' '}
 				}
 				if err != nil {
 					break
 				}
 			}
 		}()
-		for {
 
-			mt, message, err := ws.ReadMessage()
+		go func() {
+			data := <-output
+			if err := ws.WriteMessage(websocket.TextMessage, data); err != nil {
+				logging.GetInstance().Error(err)
+			}
+		}()
+		for {
+			ws.CloseHandler()
+			_, message, err := ws.ReadMessage()
 			if err != nil {
 				log.Println("read:", err)
 				break
@@ -523,51 +543,39 @@ func (dp *DockerProvider) attach(ctx context.Context, ws *websocket.Conn, proper
 
 			log.Printf("recv: %s", message)
 			inout <- message
-			data := <-output
-			err = ws.WriteMessage(mt, data)
-			if err != nil {
-				log.Println("write:", err)
-				break
-			}
 		}
 	}
 	return nil
 }
 
 func (dp *DockerProvider) log(ctx context.Context, ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
-	var output chan []byte
-	options := types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true}
-	if out, err := dp.dkr.ServiceLogs(ctx, container, options); err != nil {
+	options := types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true, Follow: true, Details: true, Timestamps: true}
+	if out, err := dp.dkr.ContainerLogs(ctx, container, options); err != nil {
+		logging.GetInstance().Error(err)
 		return err
 	} else {
+		//var output chan []byte
 		defer out.Close()
+		defer ws.Close()
+		errs := make(chan error, 2)
+		quit := make(chan bool)
+		handler := &providers.WebSocketWriter{Conn: ws}
 		go func() {
-			buffer := make([]byte, 4096)
-			for {
-				c, err := out.Read(buffer)
-				if c > 0 {
-
-					output <- buffer[:c]
-				}
-				if err != nil {
-					break
-				}
+			defer close(quit)
+			_, err := io.Copy(handler, out)
+			if err != nil && err != io.EOF {
+				errs <- err
 			}
 		}()
-		for {
-			data := <-output
-			if err = ws.WriteMessage(websocket.BinaryMessage, data); err != nil {
-				logging.GetInstance().Error("write:", err)
-				break
-			}
-		}
+		<-quit
+		close(errs)
+		return <-errs
+
 	}
-
-	return nil
 }
 
-func (dp *DockerProvider) commandsForExec(cmd string) []string {
-	source := "[ -f /home/application/apprc ] && source /home/application/apprc"
-	cd := fmt.Sprintf("[ -d %s ] && cd %s", defaultAppDir, defaultAppDir)
-	return []string{"/bin/sh", "-c", fmt.Sprintf("%s; %s; %s", source, cd, cmd)}
-}
+// func (dp *DockerProvider) commandsForExec(cmd string) []string {
+// 	source := "[ -f /home/application/apprc ] && source /home/application/apprc"
+// 	cd := fmt.Sprintf("[ -d %s ] && cd %s", defaultAppDir, defaultAppDir)
+// 	return []string{"/bin/sh", "-c", fmt.Sprintf("%s; %s; %s", source, cd, cmd)}
+// }

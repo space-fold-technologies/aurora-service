@@ -96,27 +96,29 @@ func (as *AppService) Deploy(ws *websocket.Conn, properties *providers.TerminalP
 	}
 }
 
-func (as *AppService) Log(ws *websocket.Conn, name string, properties *providers.TerminalProperties) error {
-	if details, err := as.repository.FetchDetails(name); err != nil {
+func (as *AppService) Log(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+	if details, err := as.repository.FetchDetails(properties.Name); err != nil {
 		return err
 	} else if len(details.Instances) > 0 {
 		container := details.Instances[0]
-		logging.GetInstance().Infof("Logging Container: %s For App : %s", container.Identifier, name)
-		as.provider.Log(ws, properties, container.Identifier)
+		logging.GetInstance().Infof("Logging Container: %s For App : %s", container.Identifier, properties.Name)
+		if err := as.provider.Log(ws, properties, container.Identifier); err != nil {
+			return err
+		}
 	}
-	return ws.Close()
+	return nil
 }
 
-func (as *AppService) Shell(ws *websocket.Conn, name string, properties *providers.TerminalProperties) error {
+func (as *AppService) Shell(ws *websocket.Conn, properties *providers.TerminalProperties) error {
 	// Will need to read a lot more on this one
-	if details, err := as.repository.FetchDetails(name); err != nil {
+	if details, err := as.repository.FetchDetails(properties.Name); err != nil {
 		return err
 	} else if len(details.Instances) > 0 {
 		container := details.Instances[0]
-		logging.GetInstance().Infof("Logging Container: %s For App : %s", container.Identifier, name)
+		logging.GetInstance().Infof("Shell Container: %s For App : %s", container.Identifier, properties.Name)
 		as.provider.Shell(ws, properties, container.Identifier)
 	}
-	return ws.Close()
+	return nil
 }
 
 func (as *AppService) Create(order *CreateAppOrder) error {

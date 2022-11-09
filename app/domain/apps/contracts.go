@@ -15,7 +15,7 @@ func Parse(r *http.Request) *providers.TerminalProperties {
 		Width:          ToInt(r.Header.Values("width")[0]),
 		Heigth:         ToInt(r.Header.Values("height")[0]),
 		ClientTerminal: SafeFetch("term", r),
-		Token:          r.Header.Values("token")[0],
+		Token:          SafeFetch("token", r),
 		Isolated:       ToBool(r.Header.Values("isolated")[0]),
 	}
 }
