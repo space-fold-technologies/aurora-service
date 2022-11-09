@@ -20,7 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
-	"golang.org/x/crypto/ssh/terminal"
+	terminal "golang.org/x/term"
 )
 
 var (
@@ -484,7 +484,6 @@ func (dp *DockerProvider) attach(ctx context.Context, ws *websocket.Conn, proper
 	defer func() {
 		for term != nil {
 			buffer.Disable()
-
 			if _, err := term.ReadLine(); err != nil {
 				break
 			} else {
@@ -502,7 +501,7 @@ func (dp *DockerProvider) attach(ctx context.Context, ws *websocket.Conn, proper
 		Cmd:          commands,
 	}
 	commander := providers.ShellLogger{Base: &providers.WebSocketWriter{Conn: ws}, Term: term}
-
+	//commander := providers.WebSocketWriter{Conn: ws}
 	if resp, err := dp.dkr.ContainerExecCreate(ctx, container, options); err != nil {
 		return err
 	} else if connection, err := dp.dkr.ContainerExecAttach(ctx, resp.ID, types.ExecStartCheck{Detach: false, Tty: true}); err != nil {
@@ -536,7 +535,6 @@ func (dp *DockerProvider) log(ctx context.Context, ws *websocket.Conn, propertie
 		logging.GetInstance().Error(err)
 		return err
 	} else {
-		//var output chan []byte
 		defer out.Close()
 		defer ws.Close()
 		errs := make(chan error, 2)
