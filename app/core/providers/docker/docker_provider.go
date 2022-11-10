@@ -67,6 +67,7 @@ func (dp *DockerProvider) Deploy(ws *websocket.Conn, properties *providers.Termi
 	})
 	defer close(quit)
 	defer ctx.Done()
+	defer ws.Close()
 	go func() {
 		for {
 			select {
@@ -82,9 +83,9 @@ func (dp *DockerProvider) Deploy(ws *websocket.Conn, properties *providers.Termi
 		return err
 	} else if serviceId, err := dp.createService(ctx, ws, order, digest); err != nil {
 		return err
-	} else if err := dp.success(ctx, serviceId, int(order.Scale), callback); err != nil {
-		logging.GetInstance().Errorf("no peace, no deploy")
+	} else if err := dp.success(ctx, serviceId, callback); err != nil {
 		logging.GetInstance().Error(err)
+		return err
 	}
 	return nil
 }
@@ -93,6 +94,30 @@ func (dp *DockerProvider) Stop(container string) error {
 	ctx := context.Background()
 	defer ctx.Done()
 	return dp.dkr.ServiceRemove(ctx, container)
+}
+
+func (dp *DockerProvider) Nuke(serviceId string) error {
+	ctx := context.Background()
+	defer ctx.Done()
+	return dp.dkr.ServiceRemove(ctx, serviceId)
+}
+
+func (dp *DockerProvider) Fetch(name string, callback providers.StatusCallback) error {
+	ctx := context.Background()
+	defer ctx.Done()
+	retries := 0
+	containers := make(map[string]*providers.Instance)
+	if err := dp.containers(ctx, name, containers, &retries); err != nil {
+		return err
+	} else if len(containers) == 0 {
+		return fmt.Errorf("no running containers found matching %s service", name)
+	}
+
+	return callback(ctx, &providers.CurrentState{
+		Status:    "RUNNING",
+		Message:   "currently running containers",
+		Instances: containers,
+	})
 }
 
 func (dp *DockerProvider) Log(ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
@@ -326,7 +351,7 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 		logging.GetInstance().Error(err)
 		return "", err
 	} else {
-		for port, _ := range image.Config.ExposedPorts {
+		for port := range image.Config.ExposedPorts {
 			ports = append(ports, swarm.PortConfig{TargetPort: uint32(port.Int()), PublishedPort: uint32(port.Int()), Protocol: swarm.PortConfigProtocol(port.Proto())})
 			portList = append(portList, uint(port.Int()))
 		}
@@ -408,13 +433,13 @@ func (dp *DockerProvider) hasNetwork(ctx context.Context, name string) (bool, er
 	return false, nil
 }
 
-func (dp *DockerProvider) success(ctx context.Context, serviceId string, limit int, callback providers.DeploymentCallback) error {
+func (dp *DockerProvider) success(ctx context.Context, serviceId string, callback providers.DeploymentCallback) error {
 	logger := logging.GetInstance()
 	retries := 0
 	containers := make(map[string]*providers.Instance)
 	if info, _, err := dp.dkr.ServiceInspectWithRaw(ctx, serviceId, types.ServiceInspectOptions{InsertDefaults: true}); err != nil {
 		return err
-	} else if err := dp.containers(ctx, info.Spec.Name, limit, containers, &retries); err != nil {
+	} else if err := dp.containers(ctx, info.Spec.Name, containers, &retries); err != nil {
 		return err
 	} else {
 		logger.Infof("DEPLOYED SERVICE NAME: %s", info.Spec.Name)
@@ -441,7 +466,7 @@ func (dp *DockerProvider) encodeCredentials(username, password string) string {
 	return base64.URLEncoding.EncodeToString(encodedJSON)
 }
 
-func (dp *DockerProvider) containers(ctx context.Context, name string, limit int, pack map[string]*providers.Instance, retries *int) error {
+func (dp *DockerProvider) containers(ctx context.Context, name string, pack map[string]*providers.Instance, retries *int) error {
 	logging.GetInstance().Infof("FETCHING CONTAINER DETAILS FROM SERVICE :%s ATTEMPT :%d", name, *retries)
 	filterArguments := filters.NewArgs()
 	filterArguments.Add("label", fmt.Sprintf("com.docker.swarm.service.name=%s", strings.Trim(name, " ")))
@@ -455,7 +480,7 @@ func (dp *DockerProvider) containers(ctx context.Context, name string, limit int
 		if len(containers) == 0 && *retries <= MAX_RETRIES {
 			time.Sleep(5 * time.Second)
 			*retries++
-			return dp.containers(ctx, name, limit, pack, retries)
+			return dp.containers(ctx, name, pack, retries)
 		}
 
 		logging.GetInstance().Infof("CONTAINERS FOUND: %d", len(containers))

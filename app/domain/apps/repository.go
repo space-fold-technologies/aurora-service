@@ -12,4 +12,6 @@ type ApplicationRepository interface {
 	FetchEnvVars(name string) ([]*EnvVarEntry, error)
 	AddContainers(order []*ContainerOrder) error
 	RemoveContainer(Identifier string) error
+	Deployed(name string) (*LastDeployment, error)
+	RemoveContainers(applicationId string) error
 }

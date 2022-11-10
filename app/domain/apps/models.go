@@ -9,8 +9,8 @@ import (
 )
 
 type EnvVarEntry struct {
-	Key string `gorm:"key"`
-	Val string `gorm:"value"`
+	Key string `gorm:"column:key;type:varchar"`
+	Val string `gorm:"column:value;type:varchar"`
 }
 
 type ApplicationSummary struct {
@@ -53,4 +53,9 @@ func (Deployment) TableName() string {
 
 type TargetDeployment struct {
 	ImageURI string `gorm:"image_uri"`
+}
+
+type LastDeployment struct {
+	ServiceID     string `gorm:"column:service_identifier;type:varchar"`
+	ApplicationID string `gorm:"column:identifier"`
 }

@@ -136,6 +136,7 @@ func (sar *SQLApplicationRepository) AddContainers(orders []*ContainerOrder) err
 	}
 	return tx.Commit().Error
 }
+
 func (sar *SQLApplicationRepository) RemoveContainer(Identifier string) error {
 	sql := "DELETE FROM container_tb WHERE identifier = ?"
 	tx := sar.dataSource.Connection().Begin()
@@ -145,6 +146,34 @@ func (sar *SQLApplicationRepository) RemoveContainer(Identifier string) error {
 		}
 	}()
 	if err := tx.Exec(sql, Identifier).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit().Error
+}
+
+func (sar *SQLApplicationRepository) Deployed(name string) (*LastDeployment, error) {
+	sql := "SELECT a.identifier, d.service_identifier FROM deployment_tb AS d " +
+		"INNER JOIN application_tb AS a ON d.application_id = a.id " +
+		"WHERE a.name = ? AND a.last_deployment = d.completed_at"
+	deployment := &LastDeployment{}
+	connection := sar.dataSource.Connection()
+	if err := connection.Raw(sql, connection).First(deployment).Error; err != nil {
+		return nil, err
+	}
+	return deployment, nil
+}
+
+func (sar *SQLApplicationRepository) RemoveContainers(applicationId string) error {
+	sql := "DELETE FROM container_tb WHERE " +
+		"application_id = (SELECT a.id FROM application_tb AS a WHERE a.identifier = ?"
+	tx := sar.dataSource.Connection().Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+	if err := tx.Exec(sql, applicationId).Error; err != nil {
 		tx.Rollback()
 		return err
 	}

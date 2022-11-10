@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 )
 
 type Order struct {
@@ -40,6 +41,7 @@ func (o *Order) ImageName() string {
 func (o *Order) Env() []string {
 	envs := make([]string, 0)
 	for _, entry := range o.Variables {
+		logging.GetInstance().Infof("ENV-VARS : KEY %s VAL %s", entry.Key, entry.Value)
 		envs = append(envs, fmt.Sprintf("%s=%s", entry.Key, entry.Value))
 	}
 	return envs
@@ -79,7 +81,14 @@ type Report struct {
 	Instances   map[string]*Instance
 }
 
+type CurrentState struct {
+	Status    string
+	Message   string
+	Instances map[string]*Instance
+}
+
 type DeploymentCallback func(ctx context.Context, report *Report) error
+type StatusCallback func(ctx context.Context, state *CurrentState) error
 type PluginParameterInjector interface {
 	Labels(target map[string]string, network, host, hostname string, ports []uint) error
 }
@@ -97,7 +106,9 @@ type NodeDetails struct {
 
 type Provider interface {
 	Deploy(ws *websocket.Conn, properties *TerminalProperties, order *Order, callback DeploymentCallback) error
-	Stop(container string) error
+	Stop(serviceId string) error
+	Nuke(serviceId string) error
+	Fetch(name string, callback StatusCallback) error
 	Log(ws *websocket.Conn, properties *TerminalProperties, container string) error
 	Shell(ws *websocket.Conn, properties *TerminalProperties, container string) error
 	Initialize(ListenAddr, AvertiseAddr string) (string, error)

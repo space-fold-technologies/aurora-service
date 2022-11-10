@@ -51,6 +51,11 @@ func (as *AppService) SetupDeployment(order *DeployAppOrder) (*DeploymentPass, e
 			pass.Token = hash
 		}
 	}
+	go func(name string) {
+		if err := as.reset(name); err != nil {
+			logging.GetInstance().Error(err)
+		}
+	}(order.GetName())
 	return pass, nil
 }
 
@@ -209,9 +214,22 @@ func (as *AppService) processReport(ctx context.Context, identifier, name string
 	}
 	return nil
 }
+
+func (as *AppService) reset(name string) error {
+	if deployment, err := as.repository.Deployed(name); err != nil {
+		return err
+	} else if err = as.repository.RemoveContainers(deployment.ApplicationID); err != nil {
+		return err
+	} else if as.provider.Nuke(deployment.ServiceID); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (as *AppService) variables(vars []*EnvVarEntry) []*providers.Variable {
 	variables := make([]*providers.Variable, 0)
 	for _, entry := range vars {
+		logging.GetInstance().Infof("PACKER: KEY : %s VALUE : %s", entry.Key, entry.Val)
 		variables = append(variables, &providers.Variable{Key: entry.Key, Value: entry.Val})
 	}
 	return variables
