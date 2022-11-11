@@ -72,5 +72,6 @@ type DeploymentUpdate struct {
 	Status     string
 	Report     string
 	ServiceID  string
+	ImageURI   string
 	UpdatedAt  *time.Time
 }

@@ -90,6 +90,18 @@ func (ac *AppController) Initialize(RouteRegistry registry.RouterRegistry) {
 		"GET",
 		ac.shell,
 	)
+	RouteRegistry.AddRestricted(
+		BASE_PATH+"/{application-name}/deployments",
+		[]string{"apps.information"},
+		"GET",
+		ac.deployments,
+	)
+	RouteRegistry.AddRestricted(
+		BASE_PATH+"/rollback",
+		[]string{"apps.information"},
+		"GET",
+		ac.rollback,
+	)
 }
 
 func (ac *AppController) create(w http.ResponseWriter, r *http.Request) {
@@ -174,6 +186,24 @@ func (ac *AppController) shell(w http.ResponseWriter, r *http.Request) {
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
 	} else if err := ac.service.Shell(ws, Parse(r)); err != nil {
+		ac.ServiceFailure(w, err)
+	}
+}
+
+func (ac *AppController) deployments(w http.ResponseWriter, r *http.Request) {
+	name := ac.GetVar("application-name", r)
+	if list, err := ac.service.Deployments(name); err != nil {
+		ac.ServiceFailure(w, err)
+	} else {
+		ac.OK(w, list)
+	}
+}
+
+func (ac *AppController) rollback(w http.ResponseWriter, r *http.Request) {
+	//Requires a web socket connetion
+	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
+		ac.ServiceFailure(w, err)
+	} else if err := ac.service.Rollback(ws, Parse(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }

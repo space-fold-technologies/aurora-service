@@ -67,7 +67,7 @@ func (dp *DockerProvider) Deploy(ws *websocket.Conn, properties *providers.Termi
 	})
 	defer close(quit)
 	defer ctx.Done()
-	defer ws.Close()
+	defer ws.WriteControl(websocket.CloseMessage, nil, time.Now().Add(time.Second))
 	go func() {
 		for {
 			select {

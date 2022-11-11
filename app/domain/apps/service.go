@@ -11,6 +11,7 @@ import (
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type AppService struct {
@@ -147,40 +148,81 @@ func (as *AppService) Update(order *UpdateAppOrder) error {
 }
 
 func (as *AppService) List(cluster string) (*AppSummary, error) {
-	logging.GetInstance().Infof("Getting apps list in cluster: %s", cluster)
-	if result, err := as.repository.List(cluster); err != nil {
-		return &AppSummary{}, err
+	if entries, err := as.repository.List(cluster); err != nil {
+		return nil, err
 	} else {
-		apps := &AppSummary{Entry: make([]*AppEntry, 0)}
-		for _, entry := range result {
-			apps.Entry = append(apps.Entry, &AppEntry{
+		summary := &AppSummary{Entries: make([]*AppSummary_Entry, 0)}
+		for _, entry := range entries {
+			summary.Entries = append(summary.Entries, &AppSummary_Entry{
 				Name:  entry.Name,
 				Scale: int32(entry.Scale),
 			})
 		}
-		return apps, nil
+		return summary, nil
 	}
 }
 
 func (as *AppService) Information(name string) (*AppDetails, error) {
 	if application, err := as.repository.FetchDetails(name); err != nil {
-		return &AppDetails{}, err
+		return nil, err
 	} else {
-		containers := make([]*ContainerEntry, 0)
+		details := &AppDetails{
+			Name:        application.Name,
+			Description: application.Description,
+			Team:        application.Team.Name,
+			Cluster:     application.Cluster.Name,
+			Containers:  make([]*AppDetails_Container, 0),
+		}
 		for _, instance := range application.Instances {
-			containers = append(containers, &ContainerEntry{
+			details.Containers = append(details.Containers, &AppDetails_Container{
 				Identifier: instance.Identifier,
 				Ip:         instance.IP,
 				Family:     instance.Family,
 			})
 		}
-		return &AppDetails{
-			Name:        application.Name,
-			Description: application.Description,
-			Team:        application.Team.Name,
-			Cluster:     application.Cluster.Name,
-			Containers:  containers,
-		}, nil
+		return details, nil
+	}
+}
+
+func (as *AppService) Deployments(name string) (*Deployments, error) {
+	if deployments, err := as.repository.Deployments(name); err != nil {
+		return nil, err
+	} else {
+		pack := &Deployments{Entries: make([]*Deployments_Entry, 0)}
+		for _, deployment := range deployments {
+			pack.Entries = append(pack.Entries, &Deployments_Entry{
+				Identifier: deployment.Identifier,
+				Image:      deployment.ImageURI,
+				Status:     deployment.Status,
+				Report:     deployment.Report,
+				Stamp:      timestamppb.New(*deployment.CompletedAt),
+			})
+		}
+		return pack, nil
+	}
+}
+
+func (as *AppService) Rollback(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+	if summary, err := as.repository.FetchDeployment(properties.Identifier); err != nil {
+		return err
+	} else if vars, err := as.repository.FetchEnvVars(summary.Name); err != nil {
+		return err
+	} else if app, err := as.repository.FetchDetails(summary.Name); err != nil {
+		return err
+	} else {
+		return as.provider.Deploy(
+			ws,
+			properties,
+			&providers.Order{
+				Identifier: properties.Identifier,
+				URI:        summary.ImageURI,
+				Variables:  as.variables(vars),
+				Volumes:    []providers.Mount{},
+				Scale:      uint(app.Scale),
+			},
+			func(ctx context.Context, report *providers.Report) error {
+				return as.processReport(ctx, properties.Identifier, properties.Name, report)
+			})
 	}
 }
 
@@ -191,6 +233,7 @@ func (as *AppService) processReport(ctx context.Context, identifier, name string
 		Status:     report.Status,
 		Report:     report.Message,
 		ServiceID:  report.ServiceID,
+		ImageURI:   report.ImageDigest,
 		UpdatedAt:  &completedAt,
 	}); err != nil {
 		return err
@@ -209,7 +252,6 @@ func (as *AppService) processReport(ctx context.Context, identifier, name string
 				instance.ServiceID, instance.TaskID, instance.ID, instance.Node,
 			)
 		}
-
 		return as.repository.AddContainers(containers)
 	}
 	return nil

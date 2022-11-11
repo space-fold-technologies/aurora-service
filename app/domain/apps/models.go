@@ -59,3 +59,16 @@ type LastDeployment struct {
 	ServiceID     string `gorm:"column:service_identifier;type:varchar"`
 	ApplicationID string `gorm:"column:identifier"`
 }
+
+type DeploymentDetails struct {
+	Identifier  string     `gorm:"column:identifier;type:uuid"`
+	ImageURI    string     `gorm:"column:image_uri;type:varchar;not null"`
+	Status      string     `gorm:"column:status;type:varchar"`
+	Report      string     `gorm:"column:report;type:varchar"`
+	CompletedAt *time.Time `gorm:"column:completed_at;type:timestamp"`
+}
+
+type DeploymentSummary struct {
+	ImageURI string `gorm:"column:image_uri;type:varchar;not null"`
+	Name     string `gorm:"column:name;type:varchar;not null"`
+}
