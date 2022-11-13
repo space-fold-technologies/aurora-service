@@ -2,7 +2,6 @@ package configuration
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
 	"github.com/space-fold-technologies/aurora-service/app/core/server"
@@ -21,7 +20,7 @@ type Configuration struct {
 	Domain                         string                         `yaml:"domain"`
 	Https                          bool                           `yaml:"https"`
 	CertResolver                   string                         `yaml:"cert-resolver"`
-	SessionDuration                time.Duration                  `yaml:"admin-session-duration"`
+	SessionDuration                int                            `yaml:"admin-session-duration"`
 	EncryptionParameters           *security.EncryptionParameters `yaml:"encryption"`
 }
 

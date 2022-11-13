@@ -118,7 +118,6 @@ func (sc *ServerCore) Stop() {
 }
 
 func (sc *ServerCore) logoPrint() {
-	//logoData, err := Asset("resources/boot.txt")
 	logoData, err := Asset("resources/boot.txt")
 	if err != nil {
 		logging.GetInstance().Error(err)

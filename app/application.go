@@ -2,6 +2,7 @@ package app
 
 import (
 	"path/filepath"
+	"time"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/configuration"
 	"github.com/space-fold-technologies/aurora-service/app/core/database"
@@ -28,6 +29,7 @@ type ServiceResources struct {
 	tokenHandler    security.TokenHandler
 	hasher          security.HashHandler
 	provider        providers.Provider
+	sessionDuration time.Duration
 }
 
 func ProduceServiceResources(
@@ -45,6 +47,7 @@ func ProduceServiceResources(
 }
 
 func (sr *ServiceResources) Initialize() {
+	sr.sessionDuration = time.Duration(sr.parameters.SessionDuration) * time.Hour
 	sr.dataSource = sr.createDataSource()
 	sr.provider = sr.providers(sr.parameters.Provider)
 	sr.setupControllers(sr.server.GetRegistry())
@@ -84,6 +87,6 @@ func (sr *ServiceResources) setupControllers(registry *controllers.HTTPControlle
 		authorization.NewRepository(sr.dataSource),
 		sr.passwordHandler,
 		sr.tokenHandler,
-		sr.parameters.SessionDuration,
+		sr.sessionDuration,
 	)))
 }
