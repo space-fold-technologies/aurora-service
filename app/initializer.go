@@ -16,6 +16,7 @@ import (
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 	"github.com/space-fold-technologies/aurora-service/app/core/providers/docker"
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
+	"github.com/space-fold-technologies/aurora-service/app/core/server"
 	"github.com/space-fold-technologies/aurora-service/app/domain/clusters"
 	"github.com/space-fold-technologies/aurora-service/app/domain/nodes"
 	"github.com/space-fold-technologies/aurora-service/app/domain/teams"
@@ -134,7 +135,7 @@ func (i *Initializer) registerAdmin(email, password string, service *users.UserS
 		Email:    email,
 		Password: password}); err != nil {
 		return err
-	} else if data, err := os.ReadFile(filepath.Join(i.configs.ProfileDIR, "configurations", "permissions.json")); err != nil {
+	} else if data, err := server.Asset("resources/permissions.json"); err != nil {
 		return err
 	} else if err := json.Unmarshal(data, &list); err != nil {
 		return err
@@ -171,7 +172,7 @@ func (i *Initializer) permissions(datasource database.DataSource) error {
 	entries := []string{}
 	arguments := []interface{}{}
 	list := make([]string, 0)
-	if data, err := os.ReadFile(filepath.Join(i.configs.ProfileDIR, "configurations", "permissions.json")); err != nil {
+	if data, err := server.Asset("resources/permissions.json"); err != nil {
 		return err
 	} else if err := json.Unmarshal(data, &list); err != nil {
 		return err

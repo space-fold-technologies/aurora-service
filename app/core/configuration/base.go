@@ -2,11 +2,10 @@ package configuration
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
+	"github.com/space-fold-technologies/aurora-service/app/core/server"
 	"gopkg.in/yaml.v2"
 )
 
@@ -26,19 +25,8 @@ type Configuration struct {
 	EncryptionParameters           *security.EncryptionParameters `yaml:"encryption"`
 }
 
-// func ParseFromResource() Configuration {
-// 	yamlFile, err := server.Asset("resources/settings.yml")
-// 	config := Configuration{}
-// 	if err != nil {
-// 		fmt.Println("Failed to open the file")
-// 		panic(err)
-// 	}
-// 	yaml.Unmarshal(yamlFile, &config)
-// 	return config
-// }
-
 func ParseFromResource() Configuration {
-	yamlFile, err := os.ReadFile(filepath.Join("./resources", "settings.yml"))
+	yamlFile, err := server.Asset("resources/settings.yml")
 	config := Configuration{}
 	if err != nil {
 		fmt.Println("Failed to open the file")
@@ -47,3 +35,14 @@ func ParseFromResource() Configuration {
 	yaml.Unmarshal(yamlFile, &config)
 	return config
 }
+
+// func ParseFromResource() Configuration {
+// 	yamlFile, err := os.ReadFile(filepath.Join("./resources", "settings.yml"))
+// 	config := Configuration{}
+// 	if err != nil {
+// 		fmt.Println("Failed to open the file")
+// 		panic(err)
+// 	}
+// 	yaml.Unmarshal(yamlFile, &config)
+// 	return config
+// }

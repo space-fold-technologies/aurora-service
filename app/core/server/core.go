@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	h "github.com/gorilla/handlers"
@@ -120,7 +119,7 @@ func (sc *ServerCore) Stop() {
 
 func (sc *ServerCore) logoPrint() {
 	//logoData, err := Asset("resources/boot.txt")
-	logoData, err := os.ReadFile(filepath.Join("./resources", "boot.txt"))
+	logoData, err := Asset("resources/boot.txt")
 	if err != nil {
 		logging.GetInstance().Error(err)
 	} else {

@@ -1,13 +1,13 @@
 provider: DOCKER-SWARM
-profile-directory: C:\\Users\\ACERAT\\.aurora-service # Path on file system to good stuff
+profile-directory: /etc/aurora # Path on file system to good stuff
 default-cluster: default # BECAUSE YOU SUCK
 default-cluster-listen-address: 0.0.0.0:2377
-default-cluster-advertise-address: 
+default-cluster-advertise-address: 10.7.96.4
 default-team: admin
 domain: 78.141.218.173.nip.io # USE YOU OWN DOMAIN
 admin-session-duration: 24 # HOURS
 host: 0.0.0.0
-port: 8080
+port: 3000
 cert-resolver: "letsencrypt"
 encryption:
   memory: 65536

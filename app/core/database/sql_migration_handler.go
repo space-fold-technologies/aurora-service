@@ -2,14 +2,12 @@ package database
 
 import (
 	"database/sql"
-	"path/filepath"
 
 	"github.com/golang-migrate/migrate/v4"
 	//_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	"github.com/golang-migrate/migrate/v4/source"
-	"github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 )
@@ -40,9 +38,9 @@ func (smh *SqlMigrationHandler) Reset(uri string) error {
 	defer db.Close()
 	if instance, err := sqlite3.WithInstance(db, &sqlite3.Config{}); err != nil {
 		return err
-	} else if fSrc, err := (&file.File{}).Open(filepath.Join("resources", "migrations")); err != nil {
+	} else if driver, err := WithInstance("resources/migrations"); err != nil {
 		return err
-	} else if m, err := migrate.NewWithInstance("file", fSrc, "sqlite3", instance); err != nil {
+	} else if m, err := migrate.NewWithInstance("embedded", driver, "sqlite3", instance); err != nil {
 		return err
 	} else {
 		return m.Down()
@@ -58,9 +56,9 @@ func (smh *SqlMigrationHandler) Migrate(uri string) error {
 	defer db.Close()
 	if instance, err := sqlite3.WithInstance(db, &sqlite3.Config{}); err != nil {
 		return err
-	} else if fSrc, err := (&file.File{}).Open(filepath.Join("resources", "migrations")); err != nil {
+	} else if driver, err := WithInstance("resources/migrations"); err != nil {
 		return err
-	} else if m, err := migrate.NewWithInstance("file", fSrc, "sqlite3", instance); err != nil {
+	} else if m, err := migrate.NewWithInstance("embedded", driver, "sqlite3", instance); err != nil {
 		return err
 	} else {
 		return m.Up()

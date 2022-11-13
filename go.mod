@@ -48,7 +48,10 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 )
 
-require golang.org/x/text v0.3.8 // indirect
+require (
+	github.com/go-bindata/go-bindata v3.1.2+incompatible // indirect
+	golang.org/x/text v0.3.8 // indirect
+)
 
 require (
 	github.com/onsi/ginkgo v1.16.5

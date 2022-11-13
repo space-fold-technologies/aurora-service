@@ -18,10 +18,7 @@ CREATE TABLE cluster_tb (
 
 CREATE TABLE cluster_teams(
    cluster_id INTEGER NOT NULL,
-   team_id INTEGER NOT NULL,
-   PRIMARY KEY(cluster_id, team_id),
-   FOREIGN KEY(cluster_id) REFERENCES cluster_tb(id) ON DELETE CASCADE,
-   FOREIGN KEY(team_id) REFERENCES team_tb(id) ON DELETE CASCADE
+   team_id INTEGER NOT NULL
 );
 
 CREATE TABLE node_tb(
@@ -33,19 +30,6 @@ CREATE TABLE node_tb(
    type VARCHAR(15) NOT NULL,
    address VARCHAR(64) NOT NULL,
    FOREIGN KEY(cluster_id) REFERENCES cluster_tb(id) ON DELETE CASCADE
-);
-
-CREATE TABLE application_tb(
-   id INTEGER PRIMARY KEY AUTOINCREMENT,
-   identifier VARCHAR(36) NOT NULL,
-   name VARCHAR(25) NOT NULL UNIQUE,
-   description TEXT NOT NULL,
-   scale INTEGER NOT NULL,
-   cluster_id INTEGER NOT NULL,
-   team_id INTEGER NOT NULL,
-   last_deployment TIMESTAMP,
-   FOREIGN KEY(cluster_id) REFERENCES cluster_tb(id) ON DELETE CASCADE,
-   FOREIGN KEY(team_id) REFERENCES team_tb(id) ON DELETE CASCADE
 );
 
 CREATE TABLE deployment_tb(
@@ -97,19 +81,13 @@ CREATE TABLE user_tb(
 
 CREATE TABLE user_teams(
    user_id INTEGER NOT NULL,
-   team_id INTEGER NOT NULL,
-   PRIMARY KEY(user_id, team_id),
-   FOREIGN KEY(user_id) REFERENCES user_tb(id) ON DELETE CASCADE,
-   FOREIGN KEY(team_id) REFERENCES team_tb(id) ON DELETE CASCADE
+   team_id INTEGER NOT NULL
 );
 
 
 CREATE TABLE user_permissions(
    user_id INTEGER NOT NULL,
-   permission_id INTEGER NOT NULL,
-   PRIMARY KEY(user_id, permission_id),
-   FOREIGN KEY(user_id) REFERENCES user_tb(id) ON DELETE CASCADE,
-   FOREIGN KEY(permission_id) REFERENCES permission_tb(id) ON DELETE CASCADE
+   permission_id INTEGER NOT NULL
 );
 
 CREATE TRIGGER update_last_deployment AFTER UPDATE ON deployment_tb
