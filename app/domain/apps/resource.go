@@ -79,10 +79,16 @@ func (ac *AppController) Initialize(RouteRegistry registry.RouterRegistry) {
 		ac.update,
 	)
 	RouteRegistry.AddRestricted(
-		BASE_PATH+"/logs",
+		BASE_PATH+"/log-container",
 		[]string{"apps.information"},
 		"GET",
-		ac.logs,
+		ac.logContainer,
+	)
+	RouteRegistry.AddRestricted(
+		BASE_PATH+"/log-service",
+		[]string{"apps.information"},
+		"GET",
+		ac.logService,
 	)
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/shell",
@@ -172,11 +178,20 @@ func (ac *AppController) update(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (ac *AppController) logs(w http.ResponseWriter, r *http.Request) {
+func (ac *AppController) logContainer(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Log(ws, Parse(r)); err != nil {
+	} else if err := ac.service.LogContainer(ws, Parse(r)); err != nil {
+		ac.ServiceFailure(w, err)
+	}
+}
+
+func (ac *AppController) logService(w http.ResponseWriter, r *http.Request) {
+	//Requires a web socket connetion
+	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
+		ac.ServiceFailure(w, err)
+	} else if err := ac.service.LogService(ws, Parse(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }

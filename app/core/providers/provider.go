@@ -109,7 +109,8 @@ type Provider interface {
 	Stop(serviceId string) error
 	Nuke(serviceId string) error
 	Fetch(name string, callback StatusCallback) error
-	Log(ws *websocket.Conn, properties *TerminalProperties, container string) error
+	LogContainer(ws *websocket.Conn, properties *TerminalProperties, container string) error
+	LogService(ws *websocket.Conn, properties *TerminalProperties, service string) error
 	Shell(ws *websocket.Conn, properties *TerminalProperties, container string) error
 	Initialize(ListenAddr, AvertiseAddr string) (string, error)
 	Join(order *JoinOrder) (*NodeDetails, error)

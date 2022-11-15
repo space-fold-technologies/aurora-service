@@ -102,13 +102,26 @@ func (as *AppService) Deploy(ws *websocket.Conn, properties *providers.TerminalP
 	}
 }
 
-func (as *AppService) Log(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+func (as *AppService) LogContainer(ws *websocket.Conn, properties *providers.TerminalProperties) error {
 	if details, err := as.repository.FetchDetails(properties.Name); err != nil {
 		return err
 	} else if len(details.Instances) > 0 {
 		container := details.Instances[0]
 		logging.GetInstance().Infof("Logging Container: %s For App : %s", container.Identifier, properties.Name)
-		if err := as.provider.Log(ws, properties, container.Identifier); err != nil {
+		if err := as.provider.LogContainer(ws, properties, container.Identifier); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (as *AppService) LogService(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+
+	if deployment, err := as.repository.Deployed(properties.Name); err != nil {
+		return err
+	} else {
+		logging.GetInstance().Infof("Service Id: %s For App : %s", deployment.ServiceID, properties.Name)
+		if err := as.provider.LogService(ws, properties, deployment.ServiceID); err != nil {
 			return err
 		}
 	}

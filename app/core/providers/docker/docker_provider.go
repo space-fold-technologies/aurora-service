@@ -120,7 +120,7 @@ func (dp *DockerProvider) Fetch(name string, callback providers.StatusCallback) 
 	})
 }
 
-func (dp *DockerProvider) Log(ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
+func (dp *DockerProvider) LogContainer(ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
 	ctx := context.Background()
 	quit := make(chan struct{})
 	ws.SetReadDeadline(time.Now().Add(pongWait))
@@ -140,8 +140,32 @@ func (dp *DockerProvider) Log(ws *websocket.Conn, properties *providers.Terminal
 			ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(2*time.Second))
 		}
 	}()
-	return dp.log(ctx, ws, properties, container)
+	return dp.logContainer(ctx, ws, properties, container)
 }
+
+func (dp *DockerProvider) LogService(ws *websocket.Conn, properties *providers.TerminalProperties, serviceId string) error {
+	ctx := context.Background()
+	quit := make(chan struct{})
+	ws.SetReadDeadline(time.Now().Add(pongWait))
+	ws.SetPongHandler(func(string) error {
+		ws.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+	defer close(quit)
+	defer ctx.Done()
+	go func() {
+		for {
+			select {
+			case <-quit:
+				return
+			case <-time.After(pingInterval):
+			}
+			ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(2*time.Second))
+		}
+	}()
+	return dp.logService(ctx, ws, properties, serviceId)
+}
+
 func (dp *DockerProvider) Shell(ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
 	ctx := context.Background()
 	quit := make(chan struct{})
@@ -174,7 +198,7 @@ func (dp *DockerProvider) Initialize(ListenAddr, AvertiseAddr string) (string, e
 		AdvertiseAddr:   AvertiseAddr,
 		DataPathAddr:    AvertiseAddr,
 		DataPathPort:    0,
-		ForceNewCluster: true,
+		ForceNewCluster: false,
 		Spec: swarm.Spec{Orchestration: swarm.OrchestrationConfig{TaskHistoryRetentionLimit: func(n int64) *int64 { return &n }(5)},
 			Raft: swarm.RaftConfig{
 				SnapshotInterval: 10000,
@@ -184,10 +208,10 @@ func (dp *DockerProvider) Initialize(ListenAddr, AvertiseAddr string) (string, e
 				HeartbeatPeriod: 5 * time.Second,
 			},
 			EncryptionConfig: swarm.EncryptionConfig{
-				AutoLockManagers: true,
+				AutoLockManagers: false,
 			},
 			CAConfig: swarm.CAConfig{NodeCertExpiry: 90 * 24 * time.Hour}},
-		AutoLockManagers: true,
+		AutoLockManagers: false,
 		Availability:     swarm.NodeAvailabilityActive,
 		DefaultAddrPool:  []string{"10.0.0.0/8"},
 		SubnetSize:       24,
@@ -554,9 +578,34 @@ func (dp *DockerProvider) attach(ctx context.Context, ws *websocket.Conn, proper
 	}
 }
 
-func (dp *DockerProvider) log(ctx context.Context, ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
+func (dp *DockerProvider) logContainer(ctx context.Context, ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
 	options := types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true, Follow: true, Details: true, Timestamps: true}
 	if out, err := dp.dkr.ContainerLogs(ctx, container, options); err != nil {
+		logging.GetInstance().Error(err)
+		return err
+	} else {
+		defer out.Close()
+		defer ws.Close()
+		errs := make(chan error, 2)
+		quit := make(chan bool)
+		handler := &providers.WebSocketWriter{Conn: ws}
+		go func() {
+			defer close(quit)
+			_, err := io.Copy(handler, out)
+			if err != nil && err != io.EOF {
+				errs <- err
+			}
+		}()
+		<-quit
+		close(errs)
+		return <-errs
+
+	}
+}
+
+func (dp *DockerProvider) logService(ctx context.Context, ws *websocket.Conn, properties *providers.TerminalProperties, serviceId string) error {
+	options := types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true, Follow: true, Details: true, Timestamps: true}
+	if out, err := dp.dkr.ServiceLogs(ctx, serviceId, options); err != nil {
 		logging.GetInstance().Error(err)
 		return err
 	} else {
