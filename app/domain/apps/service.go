@@ -103,20 +103,15 @@ func (as *AppService) Deploy(ws *websocket.Conn, properties *providers.TerminalP
 }
 
 func (as *AppService) LogContainer(ws *websocket.Conn, properties *providers.TerminalProperties) error {
-	if details, err := as.repository.FetchDetails(properties.Name); err != nil {
+	logging.GetInstance().Infof("Logging Container: %s For App : %s", properties.Identifier, properties.Name)
+	if err := as.provider.LogContainer(ws, properties, properties.Identifier); err != nil {
 		return err
-	} else if len(details.Instances) > 0 {
-		container := details.Instances[0]
-		logging.GetInstance().Infof("Logging Container: %s For App : %s", container.Identifier, properties.Name)
-		if err := as.provider.LogContainer(ws, properties, container.Identifier); err != nil {
-			return err
-		}
+
 	}
 	return nil
 }
 
 func (as *AppService) LogService(ws *websocket.Conn, properties *providers.TerminalProperties) error {
-
 	if deployment, err := as.repository.Deployed(properties.Name); err != nil {
 		return err
 	} else {
