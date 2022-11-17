@@ -28,21 +28,26 @@ var (
 	pongWait      = 60 * time.Second
 	pingInterval  = 20 * time.Second
 	defaultAppDir = "/home/application/current"
-	networkPrefix = "aurora"
-	network       = "default"
 	MAX_RETRIES   = 10
 )
+
+type DockerServiceConfigurations struct {
+	NetworkName   string
+	NetworkPrefix string
+}
 
 type DockerProvider struct {
 	dkr            *client.Client
 	pluginRegistry plugins.PluginRegistry
 	agent          providers.AgentClient
+	configuration  DockerServiceConfigurations
 }
 
-func NewProvider(pluginRegistry plugins.PluginRegistry, agent providers.AgentClient) providers.Provider {
+func NewProvider(pluginRegistry plugins.PluginRegistry, agent providers.AgentClient, configuration DockerServiceConfigurations) providers.Provider {
 	instance := new(DockerProvider)
 	instance.pluginRegistry = pluginRegistry
 	instance.agent = agent
+	instance.configuration = configuration
 	if err := instance.initialize(); err != nil {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
@@ -389,11 +394,11 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 	}
 	ws.WriteJSON(map[string]string{"status": "service-setup", "step": "Mounting volumes"})
 	networks := make([]swarm.NetworkAttachmentConfig, 0)
-	if ok, err := dp.hasNetwork(ctx, network); err != nil {
+	if ok, err := dp.hasNetwork(ctx); err != nil {
 		logging.GetInstance().Error(err)
 		return "", err
 	} else if !ok {
-		if networkId, err := dp.createNetwork(ctx, network); err != nil {
+		if networkId, err := dp.createNetwork(ctx); err != nil {
 			logging.GetInstance().Error(err)
 			return "", err
 		} else {
@@ -402,7 +407,7 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 	}
 	ws.WriteJSON(map[string]string{"status": "service-setup", "step": "setting up network"})
 	networks = append(networks, swarm.NetworkAttachmentConfig{
-		Target: fmt.Sprintf("%s-%s", networkPrefix, network),
+		Target: fmt.Sprintf("%s-%s", dp.configuration.NetworkPrefix, dp.configuration.NetworkName),
 	})
 
 	ports := make([]swarm.PortConfig, 0)
@@ -476,12 +481,12 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 	}
 }
 
-func (dp *DockerProvider) createNetwork(ctx context.Context, name string) (string, error) {
-	if response, err := dp.dkr.NetworkCreate(ctx, fmt.Sprintf("%s-%s", networkPrefix, name), types.NetworkCreate{
+func (dp *DockerProvider) createNetwork(ctx context.Context) (string, error) {
+	if response, err := dp.dkr.NetworkCreate(ctx, fmt.Sprintf("%s-%s", dp.configuration.NetworkPrefix, dp.configuration.NetworkName), types.NetworkCreate{
 		Driver: "overlay",
 		Scope:  "swarm",
 		Labels: map[string]string{
-			networkPrefix: "true",
+			dp.configuration.NetworkPrefix: "true",
 		},
 	}); err != nil {
 		return "", err
@@ -490,15 +495,15 @@ func (dp *DockerProvider) createNetwork(ctx context.Context, name string) (strin
 	}
 }
 
-func (dp *DockerProvider) hasNetwork(ctx context.Context, name string) (bool, error) {
+func (dp *DockerProvider) hasNetwork(ctx context.Context) (bool, error) {
 	if networks, err := dp.dkr.NetworkList(ctx, types.NetworkListOptions{
 		Filters: filters.NewArgs(filters.KeyValuePair{
-			Key: "name", Value: fmt.Sprintf("%s-%s", networkPrefix, name),
+			Key: "name", Value: fmt.Sprintf("%s-%s", dp.configuration.NetworkPrefix, dp.configuration.NetworkName),
 		}),
 	}); err != nil {
 		return false, err
 	} else if len(networks) > 0 {
-		if networks[0].Driver == "overlay" && networks[0].Scope == "swarm" && networks[0].Labels[networkPrefix] == "true" {
+		if networks[0].Driver == "overlay" && networks[0].Scope == "swarm" && networks[0].Labels[dp.configuration.NetworkPrefix] == "true" {
 			logging.GetInstance().Info("network already exists and is configured correctly")
 			return true, nil
 		}

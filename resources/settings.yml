@@ -1,14 +1,14 @@
 provider: DOCKER-SWARM
-profile-directory: /etc/aurora # Path on file system to good stuff
-default-cluster: default # BECAUSE YOU SUCK
-default-cluster-listen-address: 0.0.0.0:2377
+profile-directory: /etc/aurora
+default-cluster: default
+default-cluster-listen-address: '0.0.0.0:2377'
 default-cluster-advertise-address: 10.7.96.4
 default-team: admin
-domain: kanika.app # USE YOU OWN DOMAIN
-admin-session-duration: 24 # HOURS
+domain: kanika.app
+admin-session-duration: 24
 host: 0.0.0.0
 port: 1200
-cert-resolver: "letsencrypt"
+cert-resolver: letsencrypt
 network-name: default
 network-prefix: aurora
 plugins:

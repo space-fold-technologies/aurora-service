@@ -153,7 +153,13 @@ func (i *Initializer) registerAdmin(email, password string, service *users.UserS
 func (i *Initializer) provider(name string) providers.Provider {
 	if name == "DOCKER-SWARM" {
 		logging.GetInstance().Infof("Docker Swarm Provider")
-		return docker.NewProvider(plugins.NewPluginRegistry(), providers.NewClient(i.configs.AgentParameters))
+		return docker.NewProvider(
+			plugins.NewPluginRegistry(),
+			providers.NewClient(i.configs.AgentParameters),
+			docker.DockerServiceConfigurations{
+				NetworkName:   i.configs.NetworkName,
+				NetworkPrefix: i.configs.NetworkPrefix,
+			})
 	}
 	logging.GetInstance().Infof("No Supported Provider found")
 	return nil
