@@ -32,7 +32,7 @@ message UpdateAppOrder {
 message DeployAppOrder {
     string name = 1;
     string image_uri = 2;
-    RegistryCredentials credentials = 3;
+    RegistryCredentials credentials = 4;
 }
 
 message AppDetails {

@@ -89,14 +89,17 @@ type CurrentState struct {
 
 type DeploymentCallback func(ctx context.Context, report *Report) error
 type StatusCallback func(ctx context.Context, state *CurrentState) error
-type PluginParameterInjector interface {
-	Labels(target map[string]string, network, host, hostname string, ports []uint) error
+type JoinOrder struct {
+	Name           string
+	WorkerAddress  string
+	CaptainAddress string
+	Token          string
 }
 
-type JoinOrder struct {
-	ListenAddress  string
-	ClusterAddress string
-	Token          string
+type LeaveOrder struct {
+	NodeID  string
+	Address string
+	Token   string
 }
 
 type NodeDetails struct {
@@ -113,6 +116,7 @@ type Provider interface {
 	LogService(ws *websocket.Conn, properties *TerminalProperties, service string) error
 	Shell(ws *websocket.Conn, properties *TerminalProperties, container string) error
 	Initialize(ListenAddr, AvertiseAddr string) (string, error)
+	Details() (*ManagerDetails, error)
 	Join(order *JoinOrder) (*NodeDetails, error)
-	Leave(nodeId string) error
+	Leave(order *LeaveOrder) error
 }

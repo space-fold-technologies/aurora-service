@@ -52,12 +52,12 @@ func (Deployment) TableName() string {
 }
 
 type TargetDeployment struct {
-	ImageURI string `gorm:"image_uri"`
+	ImageURI string `gorm:"column:image_uri;type:varchar"`
 }
 
 type LastDeployment struct {
 	ServiceID     string `gorm:"column:service_identifier;type:varchar"`
-	ApplicationID string `gorm:"column:identifier"`
+	ApplicationID string `gorm:"column:identifier;type:varchar"`
 }
 
 type DeploymentDetails struct {

@@ -7,11 +7,20 @@ default-team: admin
 domain: kanika.app # USE YOU OWN DOMAIN
 admin-session-duration: 24 # HOURS
 host: 0.0.0.0
-port: 3000
+port: 1200
 cert-resolver: "letsencrypt"
+network-name: default
+network-prefix: aurora
+plugins:
+  - traefik
 encryption:
   memory: 65536
   iterations: 4
   parallelism: 2
   salt-length: 16
   key-length: 32
+agent-client:
+  retries: 10
+  maximum-jitter: 100
+  backoff-interval: 5
+  timeout: 1000

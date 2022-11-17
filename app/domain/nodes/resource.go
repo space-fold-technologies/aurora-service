@@ -60,7 +60,7 @@ func (nc *NodeController) create(w http.ResponseWriter, r *http.Request) {
 		nc.BadRequest(w, err)
 	} else if err = proto.Unmarshal(data, order); err != nil {
 		nc.BadRequest(w, err)
-	} else if err := nc.service.Create(order); err != nil {
+	} else if err := nc.service.Create(order, nc.GetAccessToken(r)); err != nil {
 		nc.ServiceFailure(w, err)
 	} else {
 		nc.OKNoResponse(w)
@@ -90,7 +90,7 @@ func (nc *NodeController) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (nc *NodeController) remove(w http.ResponseWriter, r *http.Request) {
-	if err := nc.service.Remove(nc.GetVar("node-name", r)); err != nil {
+	if err := nc.service.Remove(nc.GetVar("node-name", r), nc.GetAccessToken(r)); err != nil {
 		nc.ServiceFailure(w, err)
 	} else {
 		nc.OKNoResponse(w)

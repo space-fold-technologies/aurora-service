@@ -74,7 +74,6 @@ func (sc *ServerCore) OnHealthCheck(healthCheckCallback func() (interface{}, err
 // Start Server
 func (sc *ServerCore) Start() {
 	if sc.startupCallback() {
-		//sc.middlewareRegistrationCallback(sc.router)
 		sc.controllerRegistry.InitializeControllers()
 		sc.startUpServer()
 	}

@@ -3,6 +3,7 @@ package configuration
 import (
 	"fmt"
 
+	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
 	"github.com/space-fold-technologies/aurora-service/app/core/server"
 	"gopkg.in/yaml.v2"
@@ -22,6 +23,10 @@ type Configuration struct {
 	CertResolver                   string                         `yaml:"cert-resolver"`
 	SessionDuration                int                            `yaml:"admin-session-duration"`
 	EncryptionParameters           *security.EncryptionParameters `yaml:"encryption"`
+	AgentParameters                *providers.ClientConfiguration `yaml:"agent-client"`
+	NetworkPrefix                  string                         `yaml:"network-prefix"`
+	NetworkName                    string                         `yaml:"network-name"`
+	Plugins                        []string                       `yaml:"plugins"`
 }
 
 func ParseFromResource() Configuration {

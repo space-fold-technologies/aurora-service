@@ -30,5 +30,4 @@ func (Node) TableName() string {
 
 type ClusterInfo struct {
 	Address string `gorm:"address"`
-	Token   string `gorm:"token"`
 }

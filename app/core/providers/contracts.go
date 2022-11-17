@@ -20,3 +20,8 @@ type TerminalProperties struct {
 	ClientTerminal string
 	Token          string
 }
+
+type ManagerDetails struct {
+	ID      string
+	Address string
+}

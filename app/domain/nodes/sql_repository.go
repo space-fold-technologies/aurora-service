@@ -92,7 +92,7 @@ func (nr *SQLNodeRepository) Remove(Name string) error {
 
 func (nr *SQLNodeRepository) FetchClusterInfo(Cluster string) (*ClusterInfo, error) {
 	info := &ClusterInfo{}
-	sql := "SELECT address, token FROM cluster_tb WHERE name = ?"
+	sql := "SELECT address FROM cluster_tb WHERE name = ?"
 	connection := nr.dataSource.Connection()
 	if err := connection.Raw(sql, Cluster).First(info).Error; err != nil {
 		return nil, err

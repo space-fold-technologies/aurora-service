@@ -19,6 +19,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/gorilla/websocket"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
+	"github.com/space-fold-technologies/aurora-service/app/core/plugins"
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 	terminal "golang.org/x/term"
 )
@@ -33,14 +34,15 @@ var (
 )
 
 type DockerProvider struct {
-	dkr      *client.Client
-	injector providers.PluginParameterInjector
-	domain   string
+	dkr            *client.Client
+	pluginRegistry plugins.PluginRegistry
+	agent          providers.AgentClient
 }
 
-func NewProvider(injector providers.PluginParameterInjector) providers.Provider {
+func NewProvider(pluginRegistry plugins.PluginRegistry, agent providers.AgentClient) providers.Provider {
 	instance := new(DockerProvider)
-	instance.injector = injector
+	instance.pluginRegistry = pluginRegistry
+	instance.agent = agent
 	if err := instance.initialize(); err != nil {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
@@ -192,7 +194,6 @@ func (dp *DockerProvider) Shell(ws *websocket.Conn, properties *providers.Termin
 func (dp *DockerProvider) Initialize(ListenAddr, AvertiseAddr string) (string, error) {
 	ctx := context.Background()
 	defer ctx.Done()
-
 	return dp.dkr.SwarmInit(ctx, swarm.InitRequest{
 		ListenAddr:      ListenAddr,
 		AdvertiseAddr:   AvertiseAddr,
@@ -218,49 +219,85 @@ func (dp *DockerProvider) Initialize(ListenAddr, AvertiseAddr string) (string, e
 	})
 }
 
-func (dp *DockerProvider) Join(order *providers.JoinOrder) (*providers.NodeDetails, error) {
+func (dp *DockerProvider) Details() (*providers.ManagerDetails, error) {
 	ctx := context.Background()
 	defer ctx.Done()
-	existingNodes := map[string]bool{}
-	if nodes, err := dp.dkr.NodeList(ctx, types.NodeListOptions{}); err != nil {
+
+	if nodes, err := dp.dkr.NodeList(ctx, types.NodeListOptions{
+		Filters: filters.NewArgs(filters.KeyValuePair{
+			Key: "role", Value: "manager",
+		}),
+	}); err != nil {
 		return nil, err
+	} else if len(nodes) == 0 {
+		return nil, fmt.Errorf("no manager nodes found")
 	} else {
 		for _, node := range nodes {
-			existingNodes[node.ID] = true
-		}
-		if err := dp.dkr.SwarmJoin(ctx, swarm.JoinRequest{
-			ListenAddr:    order.ListenAddress,
-			AdvertiseAddr: order.ClusterAddress,
-			DataPathAddr:  "",
-			RemoteAddrs:   []string{},
-			JoinToken:     order.Token,
-			Availability:  swarm.NodeAvailabilityActive,
-		}); err != nil && !strings.Contains(err.Error(), "already part of") {
-			return nil, err
-		} else if strings.Contains(err.Error(), "already part of") {
-			for k := range existingNodes {
-				delete(existingNodes, k)
+			if node.ManagerStatus != nil && node.ManagerStatus.Leader {
+				return &providers.ManagerDetails{ID: node.ID, Address: node.Status.Addr}, nil
 			}
+			continue
 		}
-		if nodes, err := dp.dkr.NodeList(ctx, types.NodeListOptions{}); err != nil {
-			return nil, err
-		} else {
-			for _, node := range nodes {
-				if _, ok := existingNodes[node.ID]; ok {
-					continue
-				} else {
-					return &providers.NodeDetails{ID: node.ID, IP: node.Status.Addr}, nil
-				}
-			}
-			return nil, errors.New("no node created for some reason")
-		}
+	}
+	return nil, fmt.Errorf("no manager nodes found")
+}
+
+func (dp *DockerProvider) Join(order *providers.JoinOrder) (*providers.NodeDetails, error) {
+	logging.GetInstance().Infof("ADDING NODE WITH IP: %s TO CLUSTER WITH ADDR: %s", order.WorkerAddress, order.CaptainAddress)
+	ctx := context.Background()
+	retries := 0
+	if swarm, err := dp.dkr.SwarmInspect(ctx); err != nil {
+		return nil, err
+	} else if err := dp.join(ctx, order, swarm.JoinTokens.Worker); err != nil {
+		logging.GetInstance().Errorf("Failed to add: %s to cluster : %s", order.WorkerAddress, order.CaptainAddress)
+		return nil, err
+	} else if node, err := dp.worker(ctx, order.WorkerAddress, &retries); err != nil {
+		return nil, err
+	} else {
+		logging.GetInstance().Infof("ADDED NODE WITH ID: %s AND ADDR: %s", node.ID, node.Status.Addr)
+		return &providers.NodeDetails{ID: node.ID, IP: node.Status.Addr}, nil
 	}
 }
 
-func (dp *DockerProvider) Leave(nodeId string) error {
+func (dp *DockerProvider) Leave(order *providers.LeaveOrder) error {
 	ctx := context.Background()
 	defer ctx.Done()
-	return dp.dkr.NodeRemove(ctx, nodeId, types.NodeRemoveOptions{Force: true})
+	return dp.agent.Leave(ctx, &providers.RemoveAgent{Id: order.NodeID}, order.Address, order.Token)
+}
+
+func (dp *DockerProvider) join(ctx context.Context, order *providers.JoinOrder, workerToken string) error {
+	logging.GetInstance().Infof("WORKER TOKEN: %s WORKER IP: %s", workerToken, order.WorkerAddress)
+	return dp.agent.Join(ctx, &providers.RegisterAgent{
+		Token:   workerToken,
+		Name:    order.Name,
+		Address: order.CaptainAddress,
+	}, order.WorkerAddress, order.Token)
+}
+
+func (dp *DockerProvider) worker(ctx context.Context, address string, retries *int) (swarm.Node, error) {
+	if nodes, err := dp.dkr.NodeList(ctx, types.NodeListOptions{
+		Filters: filters.NewArgs(filters.KeyValuePair{
+			Key: "role", Value: "worker",
+		}),
+	}); err != nil {
+		return swarm.Node{}, err
+	} else if len(nodes) == 0 && *retries < MAX_RETRIES {
+		*retries++
+		return dp.worker(ctx, address, retries)
+	} else {
+		for _, node := range nodes {
+			if node.Status.Addr != address {
+				continue
+			} else {
+				return node, nil
+			}
+		}
+		if *retries < MAX_RETRIES {
+			*retries++
+			return dp.worker(ctx, address, retries)
+		}
+		return swarm.Node{}, fmt.Errorf("could not find worker node on time")
+	}
 }
 
 func (dp *DockerProvider) pullImage(ctx context.Context, ws *websocket.Conn, image, username, password string, retries *int) (string, error) {
@@ -339,8 +376,9 @@ func (dp *DockerProvider) fetchImageDetailsByDigest(ctx context.Context, url, re
 
 func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn, order *providers.Order, digest string) (string, error) {
 	labels := make(map[string]string)
-	host := fmt.Sprintf("%s.%s", order.Hostname(), dp.domain)
-	ws.WriteJSON(map[string]string{"status": "service-setup", "step": fmt.Sprintf("creating service with host %s", host)})
+	labels["aurora.service.name"] = order.Name
+	labels["aurora.service.id"] = order.Identifier
+
 	mounts := make([]mount.Mount, 0)
 	for _, volume := range order.Volumes {
 		mounts = append(mounts, mount.Mount{
@@ -384,10 +422,19 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 		}
 	}
 
-	if err := dp.injector.Labels(labels, network, host, order.Hostname(), portList); err != nil {
+	if err := dp.pluginRegistry.Invoke(plugins.REVERSE_PROXY, func(p plugins.Plugin) error {
+		return p.Call(
+			plugins.REVERSE_PROXY_REGISTRATION,
+			&plugins.ProxyRequest{Hostname: order.Hostname(), Port: portList[0]},
+			&plugins.ProxyResponse{Labels: labels})
+	}); err != nil {
+		logging.GetInstance().Errorf("plugin registration for [%s] failed", plugins.REVERSE_PROXY_REGISTRATION)
 		logging.GetInstance().Error(err)
-		return "", err
+	} else {
+		logging.GetInstance().Infof("loaded : %s with reverse proxy plugin", order.Hostname())
+		ws.WriteJSON(map[string]string{"status": "service-setup", "step": "registered service route with reverse proxy plugin"})
 	}
+
 	logging.GetInstance().Infof("LOCAL IMAGE+DIGEST: %s", order.Image(digest))
 	ws.WriteJSON(map[string]string{"status": "service-setup", "step": "injecting traefik labels"})
 	service := swarm.ServiceSpec{
@@ -408,6 +455,8 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 				Command:  commands,
 				Mounts:   mounts,
 				TTY:      true,
+				Labels:   map[string]string{"aurora.container.service.name": order.Name, "aurora.container.service.id": order.Identifier},
+				Hosts:    []string{"host.docker.internal"}, //<< Some nonsese like this
 			},
 			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
 			Networks:      networks,

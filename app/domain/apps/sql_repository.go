@@ -155,10 +155,10 @@ func (sar *SQLApplicationRepository) RemoveContainer(Identifier string) error {
 func (sar *SQLApplicationRepository) Deployed(name string) (*LastDeployment, error) {
 	sql := "SELECT a.identifier, d.service_identifier FROM deployment_tb AS d " +
 		"INNER JOIN application_tb AS a ON d.application_id = a.id " +
-		"WHERE a.name = ? AND a.last_deployment = d.completed_at"
+		"WHERE a.name = ? AND d.status = ? AND d.completed_at = a.last_deployment"
 	deployment := &LastDeployment{}
 	connection := sar.dataSource.Connection()
-	if err := connection.Raw(sql, connection).First(deployment).Error; err != nil {
+	if err := connection.Raw(sql, name, "DEPLOYED").First(deployment).Error; err != nil {
 		return nil, err
 	}
 	return deployment, nil

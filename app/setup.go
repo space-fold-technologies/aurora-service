@@ -10,6 +10,7 @@ import (
 
 	"github.com/space-fold-technologies/aurora-service/app/core/configuration"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
+	"github.com/space-fold-technologies/aurora-service/app/core/plugins"
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
 	"github.com/space-fold-technologies/aurora-service/app/core/server"
 )
@@ -21,17 +22,20 @@ type Application struct {
 	serviceResources *ServiceResources
 	hashHandler      security.HashHandler
 	tokenHandler     security.TokenHandler
+	pluginRegistry   plugins.PluginRegistry
 }
 
 func (a *Application) onStartUp() bool {
 	// services to start the system with
 	logging.GetInstance().Info("START UP INITIALIZATION")
 	a.serviceResources.Initialize()
+	a.pluginRegistry.StartUp()
 	return true
 }
 
 func (a *Application) onShutdown() bool {
 	// services to shutdown and resources to clean up
+	a.pluginRegistry.Shutdown()
 	logging.GetInstance().Info("SHUTDOWN CALLED")
 	return true
 }
@@ -61,6 +65,7 @@ func (a *Application) Start() {
 	} else {
 		a.hashHandler = security.NewHashHandler(publicKey, privateKey)
 		a.tokenHandler = security.NewTokenHandler(publicKey, privateKey)
+		a.pluginRegistry = plugins.NewPluginRegistry()
 		a.server = server.New(
 			a.details,
 			a.configs.Host,
@@ -74,6 +79,7 @@ func (a *Application) Start() {
 		a.configs,
 		a.tokenHandler,
 		a.hashHandler,
+		a.pluginRegistry,
 	)
 	a.server.OnStartUp(a.onStartUp)
 	a.server.OnShutDown(a.onShutdown)

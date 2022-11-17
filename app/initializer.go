@@ -87,7 +87,7 @@ func (i *Initializer) Register(email, password string) {
 
 	userService := users.NewService(users.NewRepository(datasource), i.passwordHandler)
 	clusterService := clusters.NewService(provider, clusters.NewRepository(datasource))
-	nodeService := nodes.NewService(provider, nodes.NewRepository(datasource))
+	nodeRepository := nodes.NewRepository(datasource)
 	if err := teams.NewRepository(datasource).Create(&teams.Team{
 		Name:        i.configs.DefaultTeam,
 		Identifier:  uuid.NewString(),
@@ -98,13 +98,13 @@ func (i *Initializer) Register(email, password string) {
 	if err := i.registerAdmin(email, password, userService); err != nil {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
-	} else if err := i.setupCluster(clusterService, nodeService, i.configs.DefaultTeam); err != nil {
+	} else if err := i.setupCluster(provider, clusterService, nodeRepository, i.configs.DefaultTeam); err != nil {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
 	}
 }
 
-func (i *Initializer) setupCluster(clusterService *clusters.ClusterService, nodeService *nodes.NodeService, team string) error {
+func (i *Initializer) setupCluster(provider providers.Provider, clusterService *clusters.ClusterService, repository nodes.NodeRepository, team string) error {
 	if err := clusterService.Create(&clusters.CreateClusterOrder{
 		Name:        i.configs.DefaultCluster,
 		Description: "Default cluster created for deployments",
@@ -115,12 +115,15 @@ func (i *Initializer) setupCluster(clusterService *clusters.ClusterService, node
 	}); err != nil {
 		logging.GetInstance().Info("initialization fools")
 		return err
-	} else if err := nodeService.Create(&nodes.CreateNodeOrder{
+	} else if leader, err := provider.Details(); err != nil {
+		return err
+	} else if err := repository.Create(&nodes.NodeEntry{
+		Identifier:  leader.ID,
 		Name:        "default",
 		Type:        "DOCKER",
-		Description: "Default node",
+		Description: "Leader node",
 		Cluster:     i.configs.DefaultCluster,
-		Address:     i.configs.DefaultClusterAdvertiseAddress,
+		Address:     leader.Address,
 	}); err != nil {
 		return err
 	}
@@ -150,17 +153,10 @@ func (i *Initializer) registerAdmin(email, password string, service *users.UserS
 func (i *Initializer) provider(name string) providers.Provider {
 	if name == "DOCKER-SWARM" {
 		logging.GetInstance().Infof("Docker Swarm Provider")
-		return docker.NewProvider(i.plugin())
+		return docker.NewProvider(plugins.NewPluginRegistry(), providers.NewClient(i.configs.AgentParameters))
 	}
 	logging.GetInstance().Infof("No Supported Provider found")
 	return nil
-}
-
-func (i *Initializer) plugin() providers.PluginParameterInjector {
-	instance := new(plugins.TraefikPlugin)
-	instance.Https = i.configs.Https
-	instance.CertResolverName = i.configs.CertResolver
-	return instance
 }
 
 func (i *Initializer) dataSource() database.DataSource {

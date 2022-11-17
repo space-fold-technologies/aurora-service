@@ -33,7 +33,6 @@ func (scr *SQLClusterRepository) Create(entry *ClusterEntry) error {
 		Type:        entry.Type,
 		Address:     entry.Address,
 		Namespace:   entry.Namespace,
-		Token:       entry.Token,
 		Teams:       nil,
 		Nodes:       nil,
 	}

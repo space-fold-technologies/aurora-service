@@ -49,7 +49,11 @@ require (
 )
 
 require (
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-bindata/go-bindata v3.1.2+incompatible // indirect
+	github.com/gojek/valkyrie v0.0.0-20180215180059-6aee720afcdf // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/stretchr/objx v0.4.0 // indirect
 	golang.org/x/text v0.3.8 // indirect
 )
 
@@ -68,6 +72,7 @@ require (
 
 require (
 	github.com/docker/docker v20.10.18+incompatible
+	github.com/gojek/heimdall/v7 v7.0.2
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/uuid v1.3.0
 	github.com/mattn/go-sqlite3 v1.14.12

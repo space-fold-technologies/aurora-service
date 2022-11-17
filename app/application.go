@@ -1,7 +1,9 @@
 package app
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/configuration"
@@ -28,15 +30,18 @@ type ServiceResources struct {
 	passwordHandler security.PasswordHandler
 	tokenHandler    security.TokenHandler
 	hasher          security.HashHandler
+	pluginRegistry  plugins.PluginRegistry
 	provider        providers.Provider
 	sessionDuration time.Duration
+	agent           providers.AgentClient
 }
 
 func ProduceServiceResources(
 	server *server.ServerCore,
 	parameters configuration.Configuration,
 	tokenHandler security.TokenHandler,
-	hasher security.HashHandler) *ServiceResources {
+	hasher security.HashHandler,
+	pluginRegistry plugins.PluginRegistry) *ServiceResources {
 	return &ServiceResources{
 		server:          server,
 		parameters:      parameters,
@@ -48,23 +53,24 @@ func ProduceServiceResources(
 
 func (sr *ServiceResources) Initialize() {
 	sr.sessionDuration = time.Duration(sr.parameters.SessionDuration) * time.Hour
+	sr.agent = providers.NewClient(sr.parameters.AgentParameters)
 	sr.dataSource = sr.createDataSource()
 	sr.provider = sr.providers(sr.parameters.Provider)
+	if sr.hasPlugin("traefik") {
+		sr.pluginRegistry.Put(plugins.REVERSE_PROXY, plugins.NewTraefikPlugin(
+			fmt.Sprintf("%s-%s", sr.parameters.NetworkPrefix, sr.parameters.NetworkName),
+			sr.parameters.Domain,
+			sr.parameters.Https,
+			sr.parameters.CertResolver))
+	}
 	sr.setupControllers(sr.server.GetRegistry())
 }
 
 func (sr *ServiceResources) providers(name string) providers.Provider {
 	if name == "DOCKER-SWARM" {
-		return docker.NewProvider(sr.plugin())
+		return docker.NewProvider(sr.pluginRegistry, sr.agent)
 	}
 	return nil
-}
-
-func (sr *ServiceResources) plugin() providers.PluginParameterInjector {
-	instance := new(plugins.TraefikPlugin)
-	instance.Https = sr.parameters.Https
-	instance.CertResolverName = sr.parameters.CertResolver
-	return instance
 }
 
 func (sr *ServiceResources) createDataSource() database.DataSource {
@@ -89,4 +95,13 @@ func (sr *ServiceResources) setupControllers(registry *controllers.HTTPControlle
 		sr.tokenHandler,
 		sr.sessionDuration,
 	)))
+}
+
+func (sr *ServiceResources) hasPlugin(name string) bool {
+	for _, plugin := range sr.parameters.Plugins {
+		if strings.Trim(plugin, " ") == name {
+			return true
+		}
+	}
+	return false
 }
