@@ -20,7 +20,8 @@ type Configuration struct {
 	DefaultTeam                    string                         `yaml:"default-team"`
 	Domain                         string                         `yaml:"domain"`
 	Https                          bool                           `yaml:"https"`
-	CertResolver                   string                         `yaml:"cert-resolver"`
+	CertResolverName               string                         `yaml:"cert-resolver-name"`
+	CertResolverEmail              string                         `yaml:"cert-resolver-email"`
 	SessionDuration                int                            `yaml:"admin-session-duration"`
 	EncryptionParameters           *security.EncryptionParameters `yaml:"encryption"`
 	AgentParameters                *providers.ClientConfiguration `yaml:"agent-client"`

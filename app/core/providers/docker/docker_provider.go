@@ -258,6 +258,8 @@ func (dp *DockerProvider) Join(order *providers.JoinOrder) (*providers.NodeDetai
 		return nil, err
 	} else if node, err := dp.worker(ctx, order.WorkerAddress, &retries); err != nil {
 		return nil, err
+	} else if err := dp.label(ctx, node.ID, order.Name, swarm.Version); err != nil {
+		return nil, err
 	} else {
 		logging.GetInstance().Infof("ADDED NODE WITH ID: %s AND ADDR: %s", node.ID, node.Status.Addr)
 		return &providers.NodeDetails{ID: node.ID, IP: node.Status.Addr}, nil
@@ -268,6 +270,87 @@ func (dp *DockerProvider) Leave(order *providers.LeaveOrder) error {
 	ctx := context.Background()
 	defer ctx.Done()
 	return dp.agent.Leave(ctx, &providers.RemoveAgent{Id: order.NodeID}, order.Address, order.Token)
+}
+
+func (dp *DockerProvider) CreateApplication(order *providers.ApplicationOrder) (string, error) {
+	ctx := context.Background()
+	defer ctx.Done()
+	labels := make(map[string]string)
+	labels["aurora.plugin.service.name"] = order.Name
+	labels["aurora.plugin.service.id"] = order.ID
+	mounts := make([]mount.Mount, 0)
+	for source, target := range order.Volumes {
+		mounts = append(mounts, mount.Mount{Source: source, Target: target, Type: mount.TypeBind})
+	}
+	networks := make([]swarm.NetworkAttachmentConfig, 0)
+	if ok, err := dp.hasNetwork(ctx); err != nil {
+		logging.GetInstance().Error(err)
+		return "", err
+	} else if !ok {
+		if networkId, err := dp.createNetwork(ctx); err != nil {
+			logging.GetInstance().Error(err)
+			return "", err
+		} else {
+			logging.GetInstance().Infof("created default network with id :%s", networkId)
+		}
+	}
+	networks = append(networks, swarm.NetworkAttachmentConfig{
+		Target: fmt.Sprintf("%s-%s", dp.configuration.NetworkPrefix, dp.configuration.NetworkName),
+	})
+
+	ports := make([]swarm.PortConfig, 0)
+	for port := range order.Ports {
+		ports = append(ports, swarm.PortConfig{TargetPort: uint32(port), PublishedPort: uint32(port)})
+	}
+	service := swarm.ServiceSpec{
+		Annotations: swarm.Annotations{
+			Name:   order.Name,
+			Labels: labels,
+		},
+		TaskTemplate: swarm.TaskSpec{
+			Placement: &swarm.Placement{
+				Constraints: []string{"node.role == manager"},
+				MaxReplicas: 1,
+			},
+			ContainerSpec: &swarm.ContainerSpec{
+				Hostname: order.Name,
+				Image:    order.Image(order.Digest),
+				Env:      []string{},
+				Command:  order.Command,
+				Mounts:   mounts,
+				TTY:      true,
+				Labels:   map[string]string{},
+			},
+			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
+			Networks:      networks,
+		},
+		EndpointSpec: &swarm.EndpointSpec{
+			Ports: ports,
+		},
+	}
+	options := types.ServiceCreateOptions{}
+	if resp, err := dp.dkr.ServiceCreate(ctx, service, options); err != nil {
+		logging.GetInstance().Error(err)
+		return "", err
+	} else {
+		return resp.ID, nil
+	}
+}
+
+func (dp *DockerProvider) fetchImage(ctx context.Context, uri string, retries *int) error {
+	logging.GetInstance().Infof("Pulling docker image : %s", uri)
+	if stream, err := dp.dkr.ImagePull(ctx, uri, types.ImagePullOptions{}); err != nil {
+		logging.GetInstance().Error(err)
+		if strings.Contains(strings.ToLower(err.Error()), "timeout") && *retries <= MAX_RETRIES {
+			time.Sleep(5 * time.Second)
+			*retries++
+			return dp.fetchImage(ctx, uri, retries)
+		}
+		return err
+	} else {
+		io.Copy(os.Stdout, stream)
+	}
+	return nil
 }
 
 func (dp *DockerProvider) join(ctx context.Context, order *providers.JoinOrder, workerToken string) error {
@@ -303,6 +386,16 @@ func (dp *DockerProvider) worker(ctx context.Context, address string, retries *i
 		}
 		return swarm.Node{}, fmt.Errorf("could not find worker node on time")
 	}
+}
+
+func (dp *DockerProvider) label(ctx context.Context, identifier, name string, version swarm.Version) error {
+	return dp.dkr.NodeUpdate(ctx, identifier, version, swarm.NodeSpec{
+		Annotations: swarm.Annotations{
+			Name: name,
+		},
+		Role:         swarm.NodeRoleWorker,
+		Availability: swarm.NodeAvailabilityActive,
+	})
 }
 
 func (dp *DockerProvider) pullImage(ctx context.Context, ws *websocket.Conn, image, username, password string, retries *int) (string, error) {

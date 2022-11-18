@@ -56,12 +56,14 @@ func (ir *internalPluginRegistry) Invoke(category PluginCategory, loader PluginP
 }
 
 func (ir *internalPluginRegistry) StartUp() {
-	for category, plugin := range ir.plugins {
-		logging.GetInstance().Infof("LOADING :[%s] plugin", category)
-		if err := plugin.OnStartUp(); err != nil {
-			logging.GetInstance().Error(err)
+	go func() {
+		for category, plugin := range ir.plugins {
+			logging.GetInstance().Infof("LOADING :[%s] plugin", category)
+			if err := plugin.OnStartUp(); err != nil {
+				logging.GetInstance().Error(err)
+			}
 		}
-	}
+	}()
 }
 
 func (ir *internalPluginRegistry) Shutdown() {

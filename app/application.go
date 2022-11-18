@@ -61,7 +61,9 @@ func (sr *ServiceResources) Initialize() {
 			fmt.Sprintf("%s-%s", sr.parameters.NetworkPrefix, sr.parameters.NetworkName),
 			sr.parameters.Domain,
 			sr.parameters.Https,
-			sr.parameters.CertResolver))
+			sr.parameters.CertResolverName,
+			sr.parameters.CertResolverEmail,
+			sr.provider))
 	}
 	sr.setupControllers(sr.server.GetRegistry())
 }

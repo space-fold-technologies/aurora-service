@@ -107,6 +107,26 @@ type NodeDetails struct {
 	IP string
 }
 
+type ApplicationOrder struct {
+	ID      string
+	Name    string
+	URI     string
+	Digest  string
+	Ports   []int
+	Volumes map[string]string
+	Command []string
+}
+
+func (o *ApplicationOrder) Image(digest string) string {
+	var noTag string
+	if i := strings.LastIndex(o.URI, ":"); i >= 0 {
+		noTag = o.URI[0:i]
+	} else {
+		noTag = o.URI
+	}
+	return noTag + "@" + digest
+}
+
 type Provider interface {
 	Deploy(ws *websocket.Conn, properties *TerminalProperties, order *Order, callback DeploymentCallback) error
 	Stop(serviceId string) error
@@ -119,4 +139,5 @@ type Provider interface {
 	Details() (*ManagerDetails, error)
 	Join(order *JoinOrder) (*NodeDetails, error)
 	Leave(order *LeaveOrder) error
+	CreateApplication(order *ApplicationOrder) (string, error)
 }
