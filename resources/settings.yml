@@ -8,6 +8,7 @@ domain: kanika.app
 admin-session-duration: 24
 host: 0.0.0.0
 port: 1200
+https: false
 cert-resolver-name: letsencrypt
 cert-resolver-email: email.com
 network-name: default

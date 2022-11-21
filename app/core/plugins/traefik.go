@@ -56,11 +56,11 @@ func (tp *TraefikPlugin) Category() PluginCategory {
 	return REVERSE_PROXY
 }
 func (tp *TraefikPlugin) OnStartUp() error {
-	ports := []int{80}
+	ports := make([]int, 0)
+	ports = append(ports, 80, 8080)
 	if tp.https {
 		ports = append(ports, 443)
 	}
-	ports = append(ports, 8080)
 	if identifier, err := tp.provider.CreateApplication(&providers.ApplicationOrder{
 		ID:      "traefik-plugin",
 		Name:    "internal-traefik-proxy",
@@ -73,6 +73,7 @@ func (tp *TraefikPlugin) OnStartUp() error {
 		return err
 	} else {
 		tp.identifier = identifier
+		logging.GetInstance().Infof("TRAEFIK SERVICE ID : [%s]", tp.identifier)
 	}
 	return nil
 }

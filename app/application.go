@@ -48,6 +48,7 @@ func ProduceServiceResources(
 		hasher:          hasher,
 		tokenHandler:    tokenHandler,
 		passwordHandler: security.NewPasswordHandler(parameters.EncryptionParameters),
+		pluginRegistry:  pluginRegistry,
 	}
 }
 

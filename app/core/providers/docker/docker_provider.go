@@ -72,6 +72,9 @@ func (dp *DockerProvider) Deploy(ws *websocket.Conn, properties *providers.Termi
 		ws.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
+	ws.SetCloseHandler(func(code int, text string) error {
+		return ws.Close()
+	})
 	defer close(quit)
 	defer ctx.Done()
 	defer ws.WriteControl(websocket.CloseMessage, nil, time.Now().Add(time.Second))
@@ -135,6 +138,9 @@ func (dp *DockerProvider) LogContainer(ws *websocket.Conn, properties *providers
 		ws.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
+	ws.SetCloseHandler(func(code int, text string) error {
+		return ws.Close()
+	})
 	defer close(quit)
 	defer ctx.Done()
 	go func() {
@@ -158,6 +164,9 @@ func (dp *DockerProvider) LogService(ws *websocket.Conn, properties *providers.T
 		ws.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
+	ws.SetCloseHandler(func(code int, text string) error {
+		return ws.Close()
+	})
 	defer close(quit)
 	defer ctx.Done()
 	go func() {
@@ -180,6 +189,9 @@ func (dp *DockerProvider) Shell(ws *websocket.Conn, properties *providers.Termin
 	ws.SetPongHandler(func(string) error {
 		ws.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
+	})
+	ws.SetCloseHandler(func(code int, text string) error {
+		return ws.Close()
 	})
 	defer close(quit)
 	defer ctx.Done()
@@ -299,8 +311,15 @@ func (dp *DockerProvider) CreateApplication(order *providers.ApplicationOrder) (
 	})
 
 	ports := make([]swarm.PortConfig, 0)
-	for port := range order.Ports {
+	for _, port := range order.Ports {
 		ports = append(ports, swarm.PortConfig{TargetPort: uint32(port), PublishedPort: uint32(port)})
+	}
+
+	logging.GetInstance().Infof("PORTs TO OPEN: [%d]", len(ports))
+
+	retries := 0
+	if err := dp.fetchImage(ctx, order.URI, &retries); err != nil {
+		return "", err
 	}
 	service := swarm.ServiceSpec{
 		Annotations: swarm.Annotations{
@@ -479,11 +498,7 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 
 	mounts := make([]mount.Mount, 0)
 	for _, volume := range order.Volumes {
-		mounts = append(mounts, mount.Mount{
-			Source: volume.Source,
-			Target: volume.Target,
-			Type:   mount.TypeBind,
-		})
+		mounts = append(mounts, mount.Mount{Source: volume.Source, Target: volume.Target, Type: mount.TypeBind})
 	}
 	ws.WriteJSON(map[string]string{"status": "service-setup", "step": "Mounting volumes"})
 	networks := make([]swarm.NetworkAttachmentConfig, 0)
@@ -534,16 +549,13 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 	}
 
 	logging.GetInstance().Infof("LOCAL IMAGE+DIGEST: %s", order.Image(digest))
-	ws.WriteJSON(map[string]string{"status": "service-setup", "step": "injecting traefik labels"})
-	service := swarm.ServiceSpec{
-		Annotations: swarm.Annotations{
-			Name:   order.Name,
-			Labels: labels,
-		},
+	if constraints, err := dp.isDeployableContraint(ctx, ports); err != nil {
+		return "", err
+	} else if resp, err := dp.dkr.ServiceCreate(ctx, swarm.ServiceSpec{Annotations: swarm.Annotations{Name: order.Name, Labels: labels},
 		Mode: swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: order.Replicas()}},
 		TaskTemplate: swarm.TaskSpec{
 			Placement: &swarm.Placement{
-				Constraints: []string{},
+				Constraints: constraints,
 				MaxReplicas: uint64(order.Scale),
 			},
 			ContainerSpec: &swarm.ContainerSpec{
@@ -554,24 +566,41 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 				Mounts:   mounts,
 				TTY:      true,
 				Labels:   map[string]string{"aurora.container.service.name": order.Name, "aurora.container.service.id": order.Identifier},
-				Hosts:    []string{"host.docker.internal"}, //<< Some nonsese like this
+				Hosts:    []string{"host.docker.internal:host-gateway"}, //<< Some nonsese like this //"host.docker.internal"
 			},
-			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
-			Networks:      networks,
+			RestartPolicy: &swarm.RestartPolicy{
+				Condition:   swarm.RestartPolicyConditionAny,
+				Delay:       func(t time.Duration) *time.Duration { return &t }(2),
+				MaxAttempts: func(n uint64) *uint64 { return &n }(10),
+			},
+			Networks: networks,
 		},
 		EndpointSpec: &swarm.EndpointSpec{
 			Ports: ports,
 		},
-	}
-	options := types.ServiceCreateOptions{}
-	ws.WriteJSON(map[string]string{"status": "service-setup", "step": "creating service"})
-	if resp, err := dp.dkr.ServiceCreate(ctx, service, options); err != nil {
+	}, types.ServiceCreateOptions{}); err != nil {
 		logging.GetInstance().Error(err)
 		return "", err
 	} else {
 		ws.WriteJSON(map[string]string{"status": "service-setup", "step": fmt.Sprintf("created service with id %s", resp.ID)})
 		return resp.ID, nil
 	}
+}
+
+func (dp *DockerProvider) isDeployableContraint(ctx context.Context, ports []swarm.PortConfig) ([]string, error) {
+	if nodes, err := dp.dkr.NodeList(ctx, types.NodeListOptions{
+		Filters: filters.NewArgs(filters.KeyValuePair{Key: "role", Value: "worker"}),
+	}); err != nil {
+		return []string{}, err
+	} else if len(nodes) != 0 {
+		return []string{"node.role == worker"}, nil
+	}
+	for _, port := range ports {
+		if port.TargetPort == 8080 || port.TargetPort == 80 {
+			return []string{}, fmt.Errorf("cannot deploy this application, it uses already occupied ports")
+		}
+	}
+	return []string{}, nil
 }
 
 func (dp *DockerProvider) createNetwork(ctx context.Context) (string, error) {

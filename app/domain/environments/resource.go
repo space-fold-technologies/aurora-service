@@ -45,7 +45,6 @@ func (ec *EnvironmentController) Initialize(RouteRegistry registry.RouterRegistr
 		"PUT",
 		ec.remove,
 	)
-
 }
 
 func (ec *EnvironmentController) create(w http.ResponseWriter, r *http.Request) {
