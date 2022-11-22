@@ -1,6 +1,6 @@
 module github.com/space-fold-technologies/aurora-service
 
-go 1.17
+go 1.18
 
 require github.com/sirupsen/logrus v1.9.0
 
@@ -71,6 +71,7 @@ require (
 )
 
 require (
+	github.com/deckarep/golang-set/v2 v2.1.0
 	github.com/docker/docker v20.10.18+incompatible
 	github.com/gojek/heimdall/v7 v7.0.2
 	github.com/google/go-cmp v0.5.9 // indirect

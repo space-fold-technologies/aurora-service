@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/gorilla/websocket"
-	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 )
 
 type Order struct {
@@ -39,12 +39,11 @@ func (o *Order) ImageName() string {
 }
 
 func (o *Order) Env() []string {
-	envs := make([]string, 0)
+	unique := mapset.NewSet[string]()
 	for _, entry := range o.Variables {
-		logging.GetInstance().Infof("ENV-VARS : KEY %s VAL %s", entry.Key, entry.Value)
-		envs = append(envs, fmt.Sprintf("%s=%s", entry.Key, entry.Value))
+		unique.Add(fmt.Sprintf("%s=%s", entry.Key, entry.Value))
 	}
-	return envs
+	return unique.ToSlice()
 }
 
 func (o *Order) Hostname() string {

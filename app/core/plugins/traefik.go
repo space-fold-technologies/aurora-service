@@ -79,8 +79,7 @@ func (tp *TraefikPlugin) OnStartUp() error {
 }
 
 func (tp *TraefikPlugin) OnShutDown() error {
-	tp.provider.Nuke(tp.identifier)
-	return nil
+	return tp.provider.Nuke(tp.identifier)
 }
 
 func (tp *TraefikPlugin) Call(operation string, request interface{}, response interface{}) error {

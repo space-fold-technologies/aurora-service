@@ -335,6 +335,7 @@ func (dp *DockerProvider) CreateApplication(order *providers.ApplicationOrder) (
 				Mounts:   mounts,
 				TTY:      true,
 				Labels:   map[string]string{},
+				Hosts:    []string{"host.docker.internal:host-gateway"}, //<< Some nonsese like this //"host.docker.internal"
 			},
 			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
 			Networks:      networks,
@@ -535,10 +536,16 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 	}
 
 	logging.GetInstance().Infof("LOCAL IMAGE+DIGEST: %s", order.Image(digest))
+
 	if constraints, err := dp.isDeployableContraint(ctx, ports); err != nil {
 		return "", err
-	} else if resp, err := dp.dkr.ServiceCreate(ctx, swarm.ServiceSpec{Annotations: swarm.Annotations{Name: order.Name, Labels: labels},
-		Mode: swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: order.Replicas()}},
+	} else if resp, err := dp.dkr.ServiceCreate(ctx, swarm.ServiceSpec{
+		Annotations: swarm.Annotations{
+			Name:   order.Name,
+			Labels: labels,
+		},
+		Mode: swarm.ServiceMode{
+			Replicated: &swarm.ReplicatedService{Replicas: order.Replicas()}},
 		TaskTemplate: swarm.TaskSpec{
 			Placement: &swarm.Placement{
 				Constraints: constraints,
