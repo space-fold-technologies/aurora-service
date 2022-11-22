@@ -561,12 +561,8 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 				Labels:   map[string]string{"aurora.container.service.name": order.Name, "aurora.container.service.id": order.Identifier},
 				Hosts:    []string{"host.docker.internal:host-gateway"}, //<< Some nonsese like this //"host.docker.internal"
 			},
-			RestartPolicy: &swarm.RestartPolicy{
-				Condition:   swarm.RestartPolicyConditionAny,
-				Delay:       func(t time.Duration) *time.Duration { return &t }(2),
-				MaxAttempts: func(n uint64) *uint64 { return &n }(10),
-			},
-			Networks: networks,
+			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
+			Networks:      networks,
 		},
 		EndpointSpec: &swarm.EndpointSpec{
 			Ports: ports,
