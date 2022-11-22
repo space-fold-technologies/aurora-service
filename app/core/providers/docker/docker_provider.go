@@ -72,9 +72,7 @@ func (dp *DockerProvider) Deploy(ws *websocket.Conn, properties *providers.Termi
 		ws.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
-	ws.SetCloseHandler(func(code int, text string) error {
-		return ws.Close()
-	})
+	defer ws.Close()
 	defer close(quit)
 	defer ctx.Done()
 	defer ws.WriteControl(websocket.CloseMessage, nil, time.Now().Add(time.Second))
@@ -270,8 +268,6 @@ func (dp *DockerProvider) Join(order *providers.JoinOrder) (*providers.NodeDetai
 		return nil, err
 	} else if node, err := dp.worker(ctx, order.WorkerAddress, &retries); err != nil {
 		return nil, err
-	} else if err := dp.label(ctx, node.ID, order.Name, swarm.Version); err != nil {
-		return nil, err
 	} else {
 		logging.GetInstance().Infof("ADDED NODE WITH ID: %s AND ADDR: %s", node.ID, node.Status.Addr)
 		return &providers.NodeDetails{ID: node.ID, IP: node.Status.Addr}, nil
@@ -405,16 +401,6 @@ func (dp *DockerProvider) worker(ctx context.Context, address string, retries *i
 		}
 		return swarm.Node{}, fmt.Errorf("could not find worker node on time")
 	}
-}
-
-func (dp *DockerProvider) label(ctx context.Context, identifier, name string, version swarm.Version) error {
-	return dp.dkr.NodeUpdate(ctx, identifier, version, swarm.NodeSpec{
-		Annotations: swarm.Annotations{
-			Name: name,
-		},
-		Role:         swarm.NodeRoleWorker,
-		Availability: swarm.NodeAvailabilityActive,
-	})
 }
 
 func (dp *DockerProvider) pullImage(ctx context.Context, ws *websocket.Conn, image, username, password string, retries *int) (string, error) {
@@ -640,6 +626,9 @@ func (dp *DockerProvider) success(ctx context.Context, serviceId string, callbac
 	if info, _, err := dp.dkr.ServiceInspectWithRaw(ctx, serviceId, types.ServiceInspectOptions{InsertDefaults: true}); err != nil {
 		return err
 	} else if err := dp.containers(ctx, info.Spec.Name, containers, &retries); err != nil {
+		if err := dp.dkr.ServiceRemove(ctx, serviceId); err != nil {
+			return err
+		}
 		return err
 	} else {
 		logger.Infof("DEPLOYED SERVICE NAME: %s", info.Spec.Name)
@@ -681,6 +670,8 @@ func (dp *DockerProvider) containers(ctx context.Context, name string, pack map[
 			time.Sleep(5 * time.Second)
 			*retries++
 			return dp.containers(ctx, name, pack, retries)
+		} else if len(containers) == 0 {
+			return fmt.Errorf("no containers were created successfully")
 		}
 
 		logging.GetInstance().Infof("CONTAINERS FOUND: %d", len(containers))

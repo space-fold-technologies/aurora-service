@@ -279,7 +279,6 @@ func (as *AppService) reset(name string) error {
 func (as *AppService) variables(vars []*EnvVarEntry) []*providers.Variable {
 	variables := make([]*providers.Variable, 0)
 	for _, entry := range vars {
-		logging.GetInstance().Infof("PACKER: KEY : %s VALUE : %s", entry.Key, entry.Val)
 		variables = append(variables, &providers.Variable{Key: entry.Key, Value: entry.Val})
 	}
 	return variables

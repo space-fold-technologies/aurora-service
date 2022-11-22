@@ -3,6 +3,7 @@ package nodes
 import (
 	"fmt"
 
+	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 )
 
@@ -21,24 +22,28 @@ func NewService(provider providers.Provider, repository NodeRepository) *NodeSer
 func (ns *NodeService) Create(order *CreateNodeOrder, token string) error {
 	if info, err := ns.repository.FetchClusterInfo(order.GetCluster()); err != nil {
 		return err
-	} else if details, err := ns.provider.Join(&providers.JoinOrder{
-		Name:           order.Name,
-		CaptainAddress: info.Address,
-		WorkerAddress:  order.GetAddress(),
-		Token:          token,
-	}); err != nil {
-		return err
 	} else {
-		return ns.repository.Create(&NodeEntry{
-			Name:        order.GetName(),
-			Identifier:  details.ID,
-			Type:        order.GetType(),
-			Description: order.GetDescription(),
-			Address:     order.GetAddress(),
-			Cluster:     order.GetCluster(),
-		})
+		go func() {
+			if details, err := ns.provider.Join(&providers.JoinOrder{
+				Name:           order.Name,
+				CaptainAddress: info.Address,
+				WorkerAddress:  order.GetAddress(),
+				Token:          token,
+			}); err != nil {
+				logging.GetInstance().Error(err)
+			} else if err := ns.repository.Create(&NodeEntry{
+				Name:        order.GetName(),
+				Identifier:  details.ID,
+				Type:        order.GetType(),
+				Description: order.GetDescription(),
+				Address:     order.GetAddress(),
+				Cluster:     order.GetCluster(),
+			}); err != nil {
+				logging.GetInstance().Error(err)
+			}
+		}()
+		return nil
 	}
-
 }
 
 func (ns *NodeService) Update(order *UpdateNodeOrder) error {
