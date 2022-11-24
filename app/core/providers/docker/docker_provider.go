@@ -12,11 +12,13 @@ import (
 	"strings"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 	"github.com/gorilla/websocket"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 	"github.com/space-fold-technologies/aurora-service/app/core/plugins"
@@ -110,15 +112,16 @@ func (dp *DockerProvider) Nuke(serviceId string) error {
 	return dp.dkr.ServiceRemove(ctx, serviceId)
 }
 
-func (dp *DockerProvider) Fetch(name string, callback providers.StatusCallback) error {
+func (dp *DockerProvider) Fetch(serviceId string, callback providers.StatusCallback) error {
 	ctx := context.Background()
 	defer ctx.Done()
-	retries := 0
 	containers := make(map[string]*providers.Instance)
-	if err := dp.containers(ctx, name, containers, &retries); err != nil {
+	if info, _, err := dp.dkr.ServiceInspectWithRaw(ctx, serviceId, types.ServiceInspectOptions{}); err != nil {
+		return err
+	} else if err := dp.containerResolver(ctx, serviceId, info.Spec.Name, containers); err != nil {
 		return err
 	} else if len(containers) == 0 {
-		return fmt.Errorf("no running containers found matching %s service", name)
+		return fmt.Errorf("no running containers found matching %s service", info.Spec.Name)
 	}
 
 	return callback(ctx, &providers.CurrentState{
@@ -284,8 +287,6 @@ func (dp *DockerProvider) CreateApplication(order *providers.ApplicationOrder) (
 	ctx := context.Background()
 	defer ctx.Done()
 	labels := make(map[string]string)
-	labels["aurora.plugin.service.name"] = order.Name
-	labels["aurora.plugin.service.id"] = order.ID
 	mounts := make([]mount.Mount, 0)
 	for source, target := range order.Volumes {
 		mounts = append(mounts, mount.Mount{Source: source, Target: target, Type: mount.TypeBind})
@@ -480,14 +481,10 @@ func (dp *DockerProvider) fetchImageDetailsByDigest(ctx context.Context, url, re
 
 func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn, order *providers.Order, digest string) (string, error) {
 	labels := make(map[string]string)
-	labels["aurora.service.name"] = order.Name
-	labels["aurora.service.id"] = order.Identifier
-
 	mounts := make([]mount.Mount, 0)
 	for _, volume := range order.Volumes {
 		mounts = append(mounts, mount.Mount{Source: volume.Source, Target: volume.Target, Type: mount.TypeBind})
 	}
-	ws.WriteJSON(map[string]string{"status": "service-setup", "step": "Mounting volumes"})
 	networks := make([]swarm.NetworkAttachmentConfig, 0)
 	if ok, err := dp.hasNetwork(ctx); err != nil {
 		logging.GetInstance().Error(err)
@@ -500,32 +497,31 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 			logging.GetInstance().Infof("created default network with id :%s", networkId)
 		}
 	}
-	ws.WriteJSON(map[string]string{"status": "service-setup", "step": "setting up network"})
+
 	networks = append(networks, swarm.NetworkAttachmentConfig{
 		Target: fmt.Sprintf("%s-%s", dp.configuration.NetworkPrefix, dp.configuration.NetworkName),
 	})
-
-	ports := make([]swarm.PortConfig, 0)
-	portList := make([]uint, 0)
 	commands := make([]string, 0)
+	ports := make([]swarm.PortConfig, 0)
 	retries := 0
 	if image, err := dp.fetchImageDetailsByDigest(ctx, order.URI, order.Image(digest), &retries); err != nil {
 		logging.GetInstance().Error(err)
 		return "", err
 	} else {
-		for port := range image.Config.ExposedPorts {
-			ports = append(ports, swarm.PortConfig{TargetPort: uint32(port.Int()), PublishedPort: uint32(port.Int()), Protocol: swarm.PortConfigProtocol(port.Proto())})
-			portList = append(portList, uint(port.Int()))
-		}
 		for _, command := range image.Config.Cmd {
 			commands = append(commands, command)
+		}
+		if mappedPorts, err := dp.portMapper(ctx, image.Config.ExposedPorts); err != nil {
+			return "", err
+		} else {
+			ports = append(ports, mappedPorts...)
 		}
 	}
 
 	if err := dp.pluginRegistry.Invoke(plugins.REVERSE_PROXY, func(p plugins.Plugin) error {
 		return p.Call(
 			plugins.REVERSE_PROXY_REGISTRATION,
-			&plugins.ProxyRequest{Hostname: order.Hostname(), Port: portList[0]},
+			&plugins.ProxyRequest{Hostname: order.Hostname(), Port: uint(ports[0].PublishedPort)},
 			&plugins.ProxyResponse{Labels: labels})
 	}); err != nil {
 		logging.GetInstance().Errorf("plugin registration for [%s] failed", plugins.REVERSE_PROXY_REGISTRATION)
@@ -537,7 +533,7 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 
 	logging.GetInstance().Infof("LOCAL IMAGE+DIGEST: %s", order.Image(digest))
 
-	if constraints, err := dp.isDeployableContraint(ctx, ports); err != nil {
+	if constraints, err := dp.isDeployableContraint(ctx); err != nil {
 		return "", err
 	} else if resp, err := dp.dkr.ServiceCreate(ctx, swarm.ServiceSpec{
 		Annotations: swarm.Annotations{
@@ -550,6 +546,7 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 			Placement: &swarm.Placement{
 				Constraints: constraints,
 				MaxReplicas: uint64(order.Scale),
+				Platforms:   []swarm.Platform{{Architecture: "amd64", OS: "linux"}},
 			},
 			ContainerSpec: &swarm.ContainerSpec{
 				Hostname: order.Hostname(),
@@ -558,36 +555,63 @@ func (dp *DockerProvider) createService(ctx context.Context, ws *websocket.Conn,
 				Command:  commands,
 				Mounts:   mounts,
 				TTY:      true,
-				Labels:   map[string]string{"aurora.container.service.name": order.Name, "aurora.container.service.id": order.Identifier},
-				Hosts:    []string{"host.docker.internal:host-gateway"}, //<< Some nonsese like this //"host.docker.internal"
+				Init:     func(b bool) *bool { return &b }(false),
 			},
-			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
-			Networks:      networks,
+			RestartPolicy: &swarm.RestartPolicy{
+				Condition: swarm.RestartPolicyConditionAny,
+				Delay:     func(t time.Duration) *time.Duration { return &t }(2 * time.Second),
+			},
+			Networks: networks,
 		},
 		EndpointSpec: &swarm.EndpointSpec{
 			Ports: ports,
 		},
 	}, types.ServiceCreateOptions{}); err != nil {
-		logging.GetInstance().Error(err)
+		logging.GetInstance().Errorf("Failed to create service: %s", err.Error())
 		return "", err
 	} else {
-		ws.WriteJSON(map[string]string{"status": "service-setup", "step": fmt.Sprintf("created service with id %s", resp.ID)})
 		return resp.ID, nil
 	}
 }
 
-func (dp *DockerProvider) isDeployableContraint(ctx context.Context, ports []swarm.PortConfig) ([]string, error) {
+func (dp *DockerProvider) portMapper(ctx context.Context, portSet nat.PortSet) ([]swarm.PortConfig, error) {
+	logger := logging.GetInstance()
+	if services, err := dp.dkr.ServiceList(ctx, types.ServiceListOptions{Status: true}); err != nil {
+		logger.Errorf("failed to get a list of services: %s", err.Error())
+		return []swarm.PortConfig{}, err
+	} else {
+		publishPorts := mapset.NewSet[uint32]()
+		for _, service := range services {
+			for _, port := range service.Endpoint.Ports {
+				publishPorts.Add(port.PublishedPort)
+			}
+		}
+		existing := publishPorts.ToSlice()
+		for j := 1; j < len(existing); j++ {
+			if existing[0] < existing[j] {
+				existing[0] = existing[j]
+			}
+		}
+		ports := make([]swarm.PortConfig, 0)
+		for port := range portSet {
+			publishPort := port.Int()
+			if publishPort == 80 || publishPort == 8080 {
+				publishPort = int(existing[0]) + 1
+			}
+			ports = append(ports, swarm.PortConfig{TargetPort: uint32(port.Int()), PublishedPort: uint32(publishPort), Protocol: swarm.PortConfigProtocol(port.Proto())})
+		}
+		return ports, nil
+	}
+}
+
+func (dp *DockerProvider) isDeployableContraint(ctx context.Context) ([]string, error) {
 	if nodes, err := dp.dkr.NodeList(ctx, types.NodeListOptions{
 		Filters: filters.NewArgs(filters.KeyValuePair{Key: "role", Value: "worker"}),
 	}); err != nil {
+		logging.GetInstance().Errorf("Was not able to find nodes because of err: %s", err.Error())
 		return []string{}, err
 	} else if len(nodes) != 0 {
-		return []string{"node.role == worker"}, nil
-	}
-	for _, port := range ports {
-		if port.TargetPort == 8080 || port.TargetPort == 80 {
-			return []string{}, fmt.Errorf("cannot deploy this application, it uses already occupied ports")
-		}
+		return []string{"node.role==worker"}, nil
 	}
 	return []string{}, nil
 }
@@ -624,11 +648,10 @@ func (dp *DockerProvider) hasNetwork(ctx context.Context) (bool, error) {
 
 func (dp *DockerProvider) success(ctx context.Context, serviceId string, callback providers.DeploymentCallback) error {
 	logger := logging.GetInstance()
-	retries := 0
 	containers := make(map[string]*providers.Instance)
 	if info, _, err := dp.dkr.ServiceInspectWithRaw(ctx, serviceId, types.ServiceInspectOptions{InsertDefaults: true}); err != nil {
 		return err
-	} else if err := dp.containers(ctx, info.Spec.Name, containers, &retries); err != nil {
+	} else if err := dp.containerResolver(ctx, serviceId, info.Spec.Name, containers); err != nil {
 		if err := dp.dkr.ServiceRemove(ctx, serviceId); err != nil {
 			return err
 		}
@@ -658,25 +681,20 @@ func (dp *DockerProvider) encodeCredentials(username, password string) string {
 	return base64.URLEncoding.EncodeToString(encodedJSON)
 }
 
-func (dp *DockerProvider) containers(ctx context.Context, name string, pack map[string]*providers.Instance, retries *int) error {
+func (dp *DockerProvider) containers(ctx context.Context, client *client.Client, name string, pack map[string]*providers.Instance, retries *int) error {
 	logging.GetInstance().Infof("FETCHING CONTAINER DETAILS FROM SERVICE :%s ATTEMPT :%d", name, *retries)
 	filterArguments := filters.NewArgs()
 	filterArguments.Add("label", fmt.Sprintf("com.docker.swarm.service.name=%s", strings.Trim(name, " ")))
-	if containers, err := dp.dkr.ContainerList(ctx, types.ContainerListOptions{
-		All:     true,
-		Filters: filterArguments,
-	}); err != nil {
+	if containers, err := client.ContainerList(ctx, types.ContainerListOptions{All: true, Filters: filterArguments}); err != nil {
 		logging.GetInstance().Error(err)
 		return err
+	} else if len(containers) == 0 && *retries < MAX_RETRIES {
+		time.Sleep(5 * time.Second)
+		*retries++
+		return dp.containers(ctx, client, name, pack, retries)
+	} else if len(containers) == 0 && *retries >= MAX_RETRIES {
+		return fmt.Errorf("no containers were created successfully")
 	} else {
-		if len(containers) == 0 && *retries <= MAX_RETRIES {
-			time.Sleep(5 * time.Second)
-			*retries++
-			return dp.containers(ctx, name, pack, retries)
-		} else if len(containers) == 0 {
-			return fmt.Errorf("no containers were created successfully")
-		}
-
 		logging.GetInstance().Infof("CONTAINERS FOUND: %d", len(containers))
 		for _, container := range containers {
 			pack[container.ID] = &providers.Instance{
@@ -688,8 +706,84 @@ func (dp *DockerProvider) containers(ctx context.Context, name string, pack map[
 				TaskID:    container.Labels["com.docker.swarm.task.id"],
 			}
 		}
-		return nil
 	}
+	return nil
+}
+
+func (dp *DockerProvider) serviceTasks(ctx context.Context, serviceId string, retries *int) ([]swarm.Task, error) {
+	filter := filters.NewArgs()
+	results := make([]swarm.Task, 0)
+	if tasks, err := dp.dkr.TaskList(ctx, types.TaskListOptions{Filters: filter}); err != nil {
+		return []swarm.Task{}, err
+	} else if len(tasks) == 0 && *retries < MAX_RETRIES {
+		time.Sleep(5 * time.Second)
+		*retries++
+		return dp.serviceTasks(ctx, serviceId, retries)
+	} else if len(tasks) == 0 && *retries >= MAX_RETRIES {
+		return []swarm.Task{}, fmt.Errorf("no tasks found matching service id: %s", serviceId)
+	} else {
+		for _, task := range tasks {
+			if task.ServiceID == serviceId {
+				if target, _, err := dp.dkr.TaskInspectWithRaw(ctx, task.ID); err != nil {
+					return []swarm.Task{}, err
+				} else if len(task.NodeID) != 0 && task.Status.ContainerStatus != nil {
+					results = append(results, target)
+				} else {
+					time.Sleep(5 * time.Second)
+					*retries++
+					return dp.serviceTasks(ctx, serviceId, retries)
+				}
+			}
+		}
+		logging.GetInstance().Infof("tasks found :%d", len(results))
+		return results, nil
+	}
+}
+
+func (dp *DockerProvider) containerResolver(ctx context.Context, serviceId, name string, pack map[string]*providers.Instance) error {
+	retries := 0
+	if tasks, err := dp.serviceTasks(ctx, serviceId, &retries); err != nil {
+		return err
+	} else {
+		for _, task := range tasks {
+			logging.GetInstance().Infof("TASK - ID: %s NODE - ID : %s SERVICE - ID : %s CONTAINER - ID : %s",
+				task.ID, task.NodeID, task.ServiceID, task.Status.ContainerStatus.ContainerID)
+			retries = 0
+			if node, _, err := dp.dkr.NodeInspectWithRaw(ctx, task.NodeID); err != nil {
+				logging.GetInstance().Errorf("Node not found to match ID: %s", task.NodeID)
+				return err
+			} else if remote, err := dp.remoteClient(node.Status.Addr); err != nil {
+				logging.GetInstance().Errorf("Failed to connect to remote node: %s", node.Status.Addr)
+				logging.GetInstance().Error(err)
+				return err
+			} else {
+				filter := filters.NewArgs()
+				filter.Add("id", task.Status.ContainerStatus.ContainerID)
+				if containers, err := remote.ContainerList(ctx, types.ContainerListOptions{Filters: filter}); err != nil {
+					logging.GetInstance().Errorf("failed to get container details: %s", err.Error())
+					pack[task.Status.ContainerStatus.ContainerID] = &providers.Instance{
+						ID:        task.Status.ContainerStatus.ContainerID,
+						IP:        "",
+						Family:    4,
+						Node:      node.ID,
+						ServiceID: task.ServiceID,
+						TaskID:    task.ID,
+					}
+				} else if len(containers) > 0 {
+					container := containers[0]
+					pack[container.ID] = &providers.Instance{
+						ID:        container.ID,
+						IP:        container.NetworkSettings.Networks["aurora-default"].IPAddress,
+						Family:    4,
+						Node:      container.Labels["com.docker.swarm.node.id"],
+						ServiceID: container.Labels["com.docker.swarm.service.id"],
+						TaskID:    container.Labels["com.docker.swarm.task.id"],
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (dp *DockerProvider) attach(ctx context.Context, ws *websocket.Conn, properties *providers.TerminalProperties, container string) error {
@@ -802,4 +896,11 @@ func (dp *DockerProvider) commandsForExec(cmd string) []string {
 	source := "[ -f /home/application/apprc ] && source /home/application/apprc"
 	cd := fmt.Sprintf("[ -d %s ] && cd %s", defaultAppDir, defaultAppDir)
 	return []string{"/bin/sh", "-c", fmt.Sprintf("%s; %s; %s", source, cd, cmd)}
+}
+
+func (dp *DockerProvider) remoteClient(workerIP string) (*client.Client, error) {
+	options := make([]client.Opt, 0)
+	options = append(options, client.WithHost(fmt.Sprintf("http://%s:2375", workerIP)))
+	options = append(options, client.WithAPIVersionNegotiation())
+	return client.NewClientWithOpts(options...)
 }

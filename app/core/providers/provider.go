@@ -130,7 +130,7 @@ type Provider interface {
 	Deploy(ws *websocket.Conn, properties *TerminalProperties, order *Order, callback DeploymentCallback) error
 	Stop(serviceId string) error
 	Nuke(serviceId string) error
-	Fetch(name string, callback StatusCallback) error
+	Fetch(serviceId string, callback StatusCallback) error
 	LogContainer(ws *websocket.Conn, properties *TerminalProperties, container string) error
 	LogService(ws *websocket.Conn, properties *TerminalProperties, service string) error
 	Shell(ws *websocket.Conn, properties *TerminalProperties, container string) error

@@ -79,7 +79,7 @@ func (tp *TraefikPlugin) OnStartUp() error {
 }
 
 func (tp *TraefikPlugin) OnShutDown() error {
-	return tp.provider.Nuke(tp.identifier)
+	return tp.provider.Stop(tp.identifier)
 }
 
 func (tp *TraefikPlugin) Call(operation string, request interface{}, response interface{}) error {
@@ -115,10 +115,6 @@ func (tp *TraefikPlugin) register(order *ProxyRequest, result *ProxyResponse) er
 		target[tlsLabel] = "true"
 		tlsResolverLabel := fmt.Sprintf("traefik.http.routers.%s.tls.certresolver", order.Hostname)
 		target[tlsResolverLabel] = tp.certResolverName
-	}
-	log := logging.GetInstance()
-	for label, value := range result.Labels {
-		log.Infof("LABEL: %s VALUE: %s", label, value)
 	}
 	return nil
 }
