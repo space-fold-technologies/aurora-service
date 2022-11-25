@@ -1,10 +1,11 @@
 package apps
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 	"github.com/space-fold-technologies/aurora-service/app/core/server/http/controllers"
 	"github.com/space-fold-technologies/aurora-service/app/core/server/registry"
 	"google.golang.org/protobuf/proto"
@@ -51,15 +52,17 @@ func (ac *AppController) Initialize(RouteRegistry registry.RouterRegistry) {
 		"POST",
 		ac.setupDeployment,
 	)
+
 	RouteRegistry.AddRestricted(
-		BASE_PATH+"{application-name}/deployment/{deployment-identifier}/deploy",
+		BASE_PATH+"/deploy",
 		[]string{"apps.deploy"},
 		"GET",
 		ac.deploy,
 	)
+
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/{application-name}/information",
-		[]string{"apps.informattion"},
+		[]string{"apps.information"},
 		"GET",
 		ac.information,
 	)
@@ -76,22 +79,40 @@ func (ac *AppController) Initialize(RouteRegistry registry.RouterRegistry) {
 		ac.update,
 	)
 	RouteRegistry.AddRestricted(
-		BASE_PATH+"/{application-name}/logs",
+		BASE_PATH+"/log-container",
 		[]string{"apps.information"},
 		"GET",
-		ac.logs,
+		ac.logContainer,
 	)
 	RouteRegistry.AddRestricted(
-		BASE_PATH+"/{application-name}/shell",
+		BASE_PATH+"/log-service",
+		[]string{"apps.information"},
+		"GET",
+		ac.logService,
+	)
+	RouteRegistry.AddRestricted(
+		BASE_PATH+"/shell",
 		[]string{"apps.shell"},
 		"GET",
 		ac.shell,
+	)
+	RouteRegistry.AddRestricted(
+		BASE_PATH+"/{application-name}/deployments",
+		[]string{"apps.information"},
+		"GET",
+		ac.deployments,
+	)
+	RouteRegistry.AddRestricted(
+		BASE_PATH+"/rollback",
+		[]string{"apps.information"},
+		"GET",
+		ac.rollback,
 	)
 }
 
 func (ac *AppController) create(w http.ResponseWriter, r *http.Request) {
 	order := &CreateAppOrder{}
-	if data, err := ioutil.ReadAll(r.Body); err != nil {
+	if data, err := io.ReadAll(r.Body); err != nil {
 		ac.BadRequest(w, err)
 	} else if err = proto.Unmarshal(data, order); err != nil {
 		ac.BadRequest(w, err)
@@ -103,23 +124,21 @@ func (ac *AppController) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ac *AppController) deploy(w http.ResponseWriter, r *http.Request) {
-	name := ac.GetVar("application-name", r)
-	identifier := ac.GetVar("deployment-identifier", r)
-	token := ac.GetVar("token", r)
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Deploy(ws, name, identifier, token, Parse(r)); err != nil {
+	} else if err := ac.service.Deploy(ws, Parse(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }
 
 func (ac *AppController) setupDeployment(w http.ResponseWriter, r *http.Request) {
 	order := &DeployAppOrder{}
-	if data, err := ioutil.ReadAll(r.Body); err != nil {
+	if data, err := io.ReadAll(r.Body); err != nil {
 		ac.BadRequest(w, err)
 	} else if err = proto.Unmarshal(data, order); err != nil {
 		ac.BadRequest(w, err)
 	} else if pass, err := ac.service.SetupDeployment(order); err != nil {
+		logging.GetInstance().Error(err)
 		ac.ServiceFailure(w, err)
 	} else {
 		ac.OK(w, pass)
@@ -127,7 +146,7 @@ func (ac *AppController) setupDeployment(w http.ResponseWriter, r *http.Request)
 }
 
 func (ac *AppController) information(w http.ResponseWriter, r *http.Request) {
-	name := ac.GetQueryString("application-name", r)
+	name := ac.GetVar("application-name", r)
 	if result, err := ac.service.Information(name); err != nil {
 		ac.ServiceFailure(w, err)
 	} else {
@@ -137,9 +156,10 @@ func (ac *AppController) information(w http.ResponseWriter, r *http.Request) {
 
 func (ac *AppController) list(w http.ResponseWriter, r *http.Request) {
 	//Returns Application names against instances and nodes with IP
-	cluster := ac.GetQueryString("cluster", r)
+	cluster := ac.GetVar("cluster", r)
 	if result, err := ac.service.List(cluster); err != nil {
-		ac.BadRequest(w, err)
+		logging.GetInstance().Error(err)
+		ac.ServiceFailure(w, err)
 	} else {
 		ac.OK(w, result)
 	}
@@ -147,7 +167,7 @@ func (ac *AppController) list(w http.ResponseWriter, r *http.Request) {
 
 func (ac *AppController) update(w http.ResponseWriter, r *http.Request) {
 	order := &UpdateAppOrder{}
-	if data, err := ioutil.ReadAll(r.Body); err != nil {
+	if data, err := io.ReadAll(r.Body); err != nil {
 		ac.BadRequest(w, err)
 	} else if err = proto.Unmarshal(data, order); err != nil {
 		ac.BadRequest(w, err)
@@ -158,23 +178,47 @@ func (ac *AppController) update(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (ac *AppController) logs(w http.ResponseWriter, r *http.Request) {
+func (ac *AppController) logContainer(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
-	name := ac.GetVar("application-name", r)
-
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Log(ws, name, Parse(r)); err != nil {
+	} else if err := ac.service.LogContainer(ws, Parse(r)); err != nil {
+		ac.ServiceFailure(w, err)
+	}
+}
+
+func (ac *AppController) logService(w http.ResponseWriter, r *http.Request) {
+	//Requires a web socket connetion
+	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
+		ac.ServiceFailure(w, err)
+	} else if err := ac.service.LogService(ws, Parse(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }
 
 func (ac *AppController) shell(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
-	name := ac.GetVar("application-name", r)
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Shell(ws, name, Parse(r)); err != nil {
+	} else if err := ac.service.Shell(ws, Parse(r)); err != nil {
+		ac.ServiceFailure(w, err)
+	}
+}
+
+func (ac *AppController) deployments(w http.ResponseWriter, r *http.Request) {
+	name := ac.GetVar("application-name", r)
+	if list, err := ac.service.Deployments(name); err != nil {
+		ac.ServiceFailure(w, err)
+	} else {
+		ac.OK(w, list)
+	}
+}
+
+func (ac *AppController) rollback(w http.ResponseWriter, r *http.Request) {
+	//Requires a web socket connetion
+	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
+		ac.ServiceFailure(w, err)
+	} else if err := ac.service.Rollback(ws, Parse(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }

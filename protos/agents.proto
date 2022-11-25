@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+option go_package = ".;providers";
+
+message RegisterAgent {
+    string token = 1;
+    string name = 2;
+    string address = 3;
+}
+
+message RemoveAgent {
+    string id = 1;
+}

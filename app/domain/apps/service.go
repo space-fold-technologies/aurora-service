@@ -2,6 +2,7 @@ package apps
 
 import (
 	"context"
+	"encoding/base64"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,6 +11,7 @@ import (
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type AppService struct {
@@ -50,30 +52,44 @@ func (as *AppService) SetupDeployment(order *DeployAppOrder) (*DeploymentPass, e
 			pass.Token = hash
 		}
 	}
+	go func(name string) {
+		if err := as.reset(name); err != nil {
+			logging.GetInstance().Error(err)
+		}
+	}(order.GetName())
 	return pass, nil
 }
 
-func (as *AppService) Deploy(ws *websocket.Conn, name, identifier, token string, properties *providers.TerminalProperties) error {
-	if uri, err := as.repository.FetchImageURI(identifier); err != nil {
+func (as *AppService) Deploy(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+	if uri, err := as.repository.FetchImageURI(properties.Identifier); err != nil {
 		return err
-	} else if vars, err := as.repository.FetchEnvVars(name); err != nil {
+	} else if vars, err := as.repository.FetchEnvVars(properties.Name); err != nil {
+		return err
+	} else if app, err := as.repository.FetchDetails(properties.Name); err != nil {
 		return err
 	} else {
 		order := &providers.Order{
-			Identifier: identifier,
+			Name:       app.Name,
+			Identifier: properties.Identifier,
 			URI:        uri,
 			Variables:  as.variables(vars),
+			Volumes:    []providers.Mount{},
+			Scale:      uint(app.Scale),
 		}
-		if len(token) > 0 {
-			credentials := &RegistryCredentials{}
-			if content, err := as.hasher.Decrypt([]byte(token)); err != nil {
-				return err
-			} else if err := proto.Unmarshal(content, credentials); err != nil {
+		if len(properties.Token) > 0 {
+			if data, err := base64.URLEncoding.DecodeString(properties.Token); err != nil {
 				return err
 			} else {
-				order.Username = credentials.GetUsername()
-				order.Password = credentials.GetPassword()
-				order.Temporary = credentials.GetTemporary()
+				credentials := &RegistryCredentials{}
+				if content, err := as.hasher.Decrypt(data); err != nil {
+					return err
+				} else if err := proto.Unmarshal(content, credentials); err != nil {
+					return err
+				} else {
+					order.Username = credentials.GetUsername()
+					order.Password = credentials.GetPassword()
+					order.Temporary = credentials.GetTemporary()
+				}
 			}
 		}
 		return as.provider.Deploy(
@@ -81,32 +97,42 @@ func (as *AppService) Deploy(ws *websocket.Conn, name, identifier, token string,
 			properties,
 			order,
 			func(ctx context.Context, report *providers.Report) error {
-				return as.processReport(ctx, identifier, name, report)
+				return as.processReport(ctx, properties.Identifier, properties.Name, report)
 			})
 	}
 }
 
-func (as *AppService) Log(ws *websocket.Conn, name string, properties *providers.TerminalProperties) error {
-	if details, err := as.repository.FetchDetails(name); err != nil {
+func (as *AppService) LogContainer(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+	logging.GetInstance().Infof("Logging Container: %s For App : %s", properties.Identifier, properties.Name)
+	if err := as.provider.LogContainer(ws, properties, properties.Identifier); err != nil {
 		return err
-	} else if len(details.Instances) > 0 {
-		container := details.Instances[0]
-		logging.GetInstance().Infof("Logging Container: %s For App : %s", container.Identifier, name)
-		as.provider.Log(ws, properties, container.Identifier)
+
 	}
-	return ws.Close()
+	return nil
 }
 
-func (as *AppService) Shell(ws *websocket.Conn, name string, properties *providers.TerminalProperties) error {
+func (as *AppService) LogService(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+	if deployment, err := as.repository.Deployed(properties.Name); err != nil {
+		return err
+	} else {
+		logging.GetInstance().Infof("Service Id: %s For App : %s", deployment.ServiceID, properties.Name)
+		if err := as.provider.LogService(ws, properties, deployment.ServiceID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (as *AppService) Shell(ws *websocket.Conn, properties *providers.TerminalProperties) error {
 	// Will need to read a lot more on this one
-	if details, err := as.repository.FetchDetails(name); err != nil {
+	if details, err := as.repository.FetchDetails(properties.Name); err != nil {
 		return err
 	} else if len(details.Instances) > 0 {
 		container := details.Instances[0]
-		logging.GetInstance().Infof("Logging Container: %s For App : %s", container.Identifier, name)
+		logging.GetInstance().Infof("Shell Container: %s For App : %s", container.Identifier, properties.Name)
 		as.provider.Shell(ws, properties, container.Identifier)
 	}
-	return ws.Close()
+	return nil
 }
 
 func (as *AppService) Create(order *CreateAppOrder) error {
@@ -130,39 +156,81 @@ func (as *AppService) Update(order *UpdateAppOrder) error {
 }
 
 func (as *AppService) List(cluster string) (*AppSummary, error) {
-	if result, err := as.repository.List(cluster); err != nil {
-		return &AppSummary{}, err
+	if entries, err := as.repository.List(cluster); err != nil {
+		return nil, err
 	} else {
-		apps := &AppSummary{Entry: make([]*AppEntry, 0)}
-		for _, entry := range result {
-			apps.Entry = append(apps.Entry, &AppEntry{
+		summary := &AppSummary{Entries: make([]*AppSummary_Entry, 0)}
+		for _, entry := range entries {
+			summary.Entries = append(summary.Entries, &AppSummary_Entry{
 				Name:  entry.Name,
 				Scale: int32(entry.Scale),
 			})
 		}
-		return &AppSummary{}, nil
+		return summary, nil
 	}
 }
 
 func (as *AppService) Information(name string) (*AppDetails, error) {
 	if application, err := as.repository.FetchDetails(name); err != nil {
-		return &AppDetails{}, err
+		return nil, err
 	} else {
-		containers := make([]*ContainerEntry, 0)
+		details := &AppDetails{
+			Name:        application.Name,
+			Description: application.Description,
+			Team:        application.Team.Name,
+			Cluster:     application.Cluster.Name,
+			Containers:  make([]*AppDetails_Container, 0),
+		}
 		for _, instance := range application.Instances {
-			containers = append(containers, &ContainerEntry{
+			details.Containers = append(details.Containers, &AppDetails_Container{
 				Identifier: instance.Identifier,
 				Ip:         instance.IP,
 				Family:     instance.Family,
 			})
 		}
-		return &AppDetails{
-			Name:        application.Name,
-			Description: application.Description,
-			Team:        application.Team.Name,
-			Cluster:     application.Cluster.Name,
-			Containers:  containers,
-		}, nil
+		return details, nil
+	}
+}
+
+func (as *AppService) Deployments(name string) (*Deployments, error) {
+	if deployments, err := as.repository.Deployments(name); err != nil {
+		return nil, err
+	} else {
+		pack := &Deployments{Entries: make([]*Deployments_Entry, 0)}
+		for _, deployment := range deployments {
+			pack.Entries = append(pack.Entries, &Deployments_Entry{
+				Identifier: deployment.Identifier,
+				Image:      deployment.ImageURI,
+				Status:     deployment.Status,
+				Report:     deployment.Report,
+				Stamp:      timestamppb.New(*deployment.CompletedAt),
+			})
+		}
+		return pack, nil
+	}
+}
+
+func (as *AppService) Rollback(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+	if summary, err := as.repository.FetchDeployment(properties.Identifier); err != nil {
+		return err
+	} else if vars, err := as.repository.FetchEnvVars(summary.Name); err != nil {
+		return err
+	} else if app, err := as.repository.FetchDetails(summary.Name); err != nil {
+		return err
+	} else {
+		return as.provider.Deploy(
+			ws,
+			properties,
+			&providers.Order{
+				Identifier: properties.Identifier,
+				URI:        summary.ImageURI,
+				Variables:  as.variables(vars),
+				Volumes:    []providers.Mount{},
+				Scale:      uint(app.Scale),
+			},
+			func(ctx context.Context, report *providers.Report) error {
+				return as.processReport(ctx, properties.Identifier, properties.Name, report)
+			})
 	}
 }
 
@@ -172,6 +240,8 @@ func (as *AppService) processReport(ctx context.Context, identifier, name string
 		Identifier: identifier,
 		Status:     report.Status,
 		Report:     report.Message,
+		ServiceID:  report.ServiceID,
+		ImageURI:   report.ImageDigest,
 		UpdatedAt:  &completedAt,
 	}); err != nil {
 		return err
@@ -190,11 +260,22 @@ func (as *AppService) processReport(ctx context.Context, identifier, name string
 				instance.ServiceID, instance.TaskID, instance.ID, instance.Node,
 			)
 		}
-
 		return as.repository.AddContainers(containers)
 	}
 	return nil
 }
+
+func (as *AppService) reset(name string) error {
+	if deployment, err := as.repository.Deployed(name); err != nil {
+		return err
+	} else if err = as.repository.RemoveContainers(deployment.ApplicationID); err != nil {
+		return err
+	} else if as.provider.Nuke(deployment.ServiceID); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (as *AppService) variables(vars []*EnvVarEntry) []*providers.Variable {
 	variables := make([]*providers.Variable, 0)
 	for _, entry := range vars {

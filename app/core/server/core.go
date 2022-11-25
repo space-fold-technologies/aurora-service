@@ -16,7 +16,7 @@ import (
 )
 
 type ServerCore struct {
-	tokenVerifier                  security.TokenVerifier
+	tokenHandler                   security.TokenHandler
 	routerRegistry                 registry.RouterRegistry
 	router                         *mux.Router
 	server                         *http.Server
@@ -30,12 +30,12 @@ type ServerCore struct {
 	details                        Details
 }
 
-func New(details Details, host string, port int, tokenVerifier security.TokenVerifier) *ServerCore {
+func New(details Details, host string, port int, tokenHandler security.TokenHandler) *ServerCore {
 	instance := &ServerCore{
-		details:       details,
-		host:          host,
-		port:          port,
-		tokenVerifier: tokenVerifier,
+		details:      details,
+		host:         host,
+		port:         port,
+		tokenHandler: tokenHandler,
 	}
 	instance.initialize()
 	return instance
@@ -43,8 +43,7 @@ func New(details Details, host string, port int, tokenVerifier security.TokenVer
 
 func (sc *ServerCore) initialize() {
 	sc.router = mux.NewRouter()
-
-	sc.routerRegistry = registry.NewRouteRegistry(sc.router, sc.tokenVerifier)
+	sc.routerRegistry = registry.NewRouteRegistry(sc.router, sc.tokenHandler)
 	sc.controllerRegistry = controllers.New(sc.routerRegistry)
 }
 
@@ -75,7 +74,7 @@ func (sc *ServerCore) OnHealthCheck(healthCheckCallback func() (interface{}, err
 // Start Server
 func (sc *ServerCore) Start() {
 	if sc.startupCallback() {
-		sc.middlewareRegistrationCallback(sc.router)
+		sc.controllerRegistry.InitializeControllers()
 		sc.startUpServer()
 	}
 }
@@ -95,17 +94,11 @@ func (sc *ServerCore) startUpServer() {
 	sc.routerRegistry.Initialize()
 	go func() {
 		sc.logoPrint()
-		LOG := logging.GetInstance()
-		LOG.Infof("Starting    %s ", sc.details.Name)
-		LOG.Infof("Version     %s ", sc.details.Version)
-		LOG.Infof("Environment %s ", sc.details.Environment)
-		LOG.Infof("Repository  %s ", sc.details.Repository)
-		LOG.Infof("Commit Hash %s ", sc.details.Hash)
-		LOG.Infof("Build Date  %s ", sc.details.BuildDate)
-		LOG.Infof("Build Epoch %d ", sc.details.BuildEpoch)
-
+		logger := logging.GetInstance()
+		logger.Infof("Starting    %s ", sc.details.Name)
+		logger.Infof("Version     %s ", sc.details.Version)
 		if err := sc.server.ListenAndServe(); err != nil {
-			LOG.Error(err)
+			logger.Error(err)
 		}
 	}()
 }

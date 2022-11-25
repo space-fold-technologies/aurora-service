@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/gorilla/websocket"
 )
 
@@ -38,11 +39,11 @@ func (o *Order) ImageName() string {
 }
 
 func (o *Order) Env() []string {
-	envs := make([]string, 0)
+	unique := mapset.NewSet[string]()
 	for _, entry := range o.Variables {
-		envs = append(envs, fmt.Sprintf("%s=%s", entry.Key, entry.Value))
+		unique.Add(fmt.Sprintf("%s=%s", entry.Key, entry.Value))
 	}
-	return envs
+	return unique.ToSlice()
 }
 
 func (o *Order) Hostname() string {
@@ -53,6 +54,8 @@ func (o *Order) Image(digest string) string {
 	var noTag string
 	if i := strings.LastIndex(o.URI, ":"); i >= 0 {
 		noTag = o.URI[0:i]
+	} else {
+		noTag = o.URI
 	}
 	return noTag + "@" + digest
 }
@@ -63,6 +66,9 @@ func (o *Order) Ports() []uint {
 
 func (o *Order) Replicas() *uint64 {
 	value := uint64(o.Scale)
+	if value == 0 {
+		value = 1
+	}
 	return &value
 }
 
@@ -74,15 +80,25 @@ type Report struct {
 	Instances   map[string]*Instance
 }
 
-type DeploymentCallback func(ctx context.Context, report *Report) error
-type PluginParameterInjector interface {
-	Labels(target map[string]string, network, host, hostname string, ports []uint) error
+type CurrentState struct {
+	Status    string
+	Message   string
+	Instances map[string]*Instance
 }
 
+type DeploymentCallback func(ctx context.Context, report *Report) error
+type StatusCallback func(ctx context.Context, state *CurrentState) error
 type JoinOrder struct {
-	IP             string
-	ClusterAddress string
+	Name           string
+	WorkerAddress  string
+	CaptainAddress string
 	Token          string
+}
+
+type LeaveOrder struct {
+	NodeID  string
+	Address string
+	Token   string
 }
 
 type NodeDetails struct {
@@ -90,12 +106,37 @@ type NodeDetails struct {
 	IP string
 }
 
+type ApplicationOrder struct {
+	ID      string
+	Name    string
+	URI     string
+	Digest  string
+	Ports   []int
+	Volumes map[string]string
+	Command []string
+}
+
+func (o *ApplicationOrder) Image(digest string) string {
+	var noTag string
+	if i := strings.LastIndex(o.URI, ":"); i >= 0 {
+		noTag = o.URI[0:i]
+	} else {
+		noTag = o.URI
+	}
+	return noTag + "@" + digest
+}
+
 type Provider interface {
 	Deploy(ws *websocket.Conn, properties *TerminalProperties, order *Order, callback DeploymentCallback) error
-	Stop(container string) error
-	Log(ws *websocket.Conn, properties *TerminalProperties, container string) error
+	Stop(serviceId string) error
+	Nuke(serviceId string) error
+	Fetch(serviceId string, callback StatusCallback) error
+	LogContainer(ws *websocket.Conn, properties *TerminalProperties, container string) error
+	LogService(ws *websocket.Conn, properties *TerminalProperties, service string) error
 	Shell(ws *websocket.Conn, properties *TerminalProperties, container string) error
-	Initialize() (string, error)
+	Initialize(ListenAddr, AvertiseAddr string) (string, error)
+	Details() (*ManagerDetails, error)
 	Join(order *JoinOrder) (*NodeDetails, error)
-	Leave(nodeId string) error
+	Leave(order *LeaveOrder) error
+	CreateApplication(order *ApplicationOrder) (string, error)
 }

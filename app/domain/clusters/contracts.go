@@ -5,7 +5,6 @@ type ClusterEntry struct {
 	Name        string
 	Description string
 	Type        string
-	Token       string
 	Address     string
 	Namespace   string
 	Teams       []string

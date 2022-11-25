@@ -5,7 +5,8 @@ option go_package = ".;users";
 message CreateUserOrder {
     string name = 1;
     string email = 2;
-    string password = 3;
+    string nickname = 3;
+    string password = 4;
 }
 
 message ResetUserOrder {
@@ -14,10 +15,20 @@ message ResetUserOrder {
     string password = 3;
 }
 
+message UpdateTeams {
+    string email = 1;
+    repeated string teams = 2;
+}
+message UpdatePermissions {
+    string email = 1;
+    repeated string permissions = 2;
+}
+
 message UserDetails {
     string name = 1;
     string email = 2;
     repeated string teams = 3;
+    repeated string permissions = 4;
 }
 
 message Users {

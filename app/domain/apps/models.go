@@ -9,8 +9,8 @@ import (
 )
 
 type EnvVarEntry struct {
-	Key string `gorm:"key"`
-	Val string `gorm:"value"`
+	Key string `gorm:"column:key;type:varchar"`
+	Val string `gorm:"column:value;type:varchar"`
 }
 
 type ApplicationSummary struct {
@@ -52,5 +52,23 @@ func (Deployment) TableName() string {
 }
 
 type TargetDeployment struct {
-	ImageURI string `gorm:"image_uri"`
+	ImageURI string `gorm:"column:image_uri;type:varchar"`
+}
+
+type LastDeployment struct {
+	ServiceID     string `gorm:"column:service_identifier;type:varchar"`
+	ApplicationID string `gorm:"column:identifier;type:varchar"`
+}
+
+type DeploymentDetails struct {
+	Identifier  string     `gorm:"column:identifier;type:uuid"`
+	ImageURI    string     `gorm:"column:image_uri;type:varchar;not null"`
+	Status      string     `gorm:"column:status;type:varchar"`
+	Report      string     `gorm:"column:report;type:varchar"`
+	CompletedAt *time.Time `gorm:"column:completed_at;type:timestamp"`
+}
+
+type DeploymentSummary struct {
+	ImageURI string `gorm:"column:image_uri;type:varchar;not null"`
+	Name     string `gorm:"column:name;type:varchar;not null"`
 }

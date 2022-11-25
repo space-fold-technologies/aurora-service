@@ -1,9 +1,12 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/space-fold-technologies/aurora-service/app/core/configuration"
@@ -13,6 +16,7 @@ import (
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 	"github.com/space-fold-technologies/aurora-service/app/core/providers/docker"
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
+	"github.com/space-fold-technologies/aurora-service/app/core/server"
 	"github.com/space-fold-technologies/aurora-service/app/domain/clusters"
 	"github.com/space-fold-technologies/aurora-service/app/domain/nodes"
 	"github.com/space-fold-technologies/aurora-service/app/domain/teams"
@@ -34,7 +38,7 @@ func (i *Initializer) init() *Initializer {
 	i.configs = configuration.ParseFromResource()
 	i.passwordHandler = security.NewPasswordHandler(i.configs.EncryptionParameters)
 	i.migrator = database.NewMigrationHandler()
-	configurationPath := fmt.Sprintf("%s/configurations", i.configs.ProfileDIR)
+	configurationPath := filepath.Join(i.configs.ProfileDIR, "configurations")
 	if _, err := os.Stat(configurationPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(configurationPath, fs.ModeAppend); err != nil {
 			logging.GetInstance().Error(err)
@@ -45,15 +49,28 @@ func (i *Initializer) init() *Initializer {
 }
 
 func (i *Initializer) Migrate() {
-	dbFile := fmt.Sprintf("%s/configurations/store.db", i.configs.ProfileDIR)
-	if err := i.migrator.Migrate(dbFile); err != nil {
+	dbFile := filepath.Join(i.configs.ProfileDIR, "configurations", "store.db")
+	if err := i.migrator.Migrate(dbFile); err != nil && !strings.Contains(err.Error(), "no change") {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
+	} else {
+		datasource := i.dataSource()
+		if has, err := i.hasPersmissions(datasource); err != nil {
+			logging.GetInstance().Error(err)
+			os.Exit(-1)
+		} else if !has {
+			if err := i.permissions(i.dataSource()); err != nil {
+				logging.GetInstance().Error(err)
+				os.Exit(-1)
+			} else {
+				logging.GetInstance().Infof("Added permissions")
+			}
+		}
 	}
 }
 
 func (i *Initializer) Reset() {
-	dbFile := fmt.Sprintf("%s/configurations/store.db", i.configs.ProfileDIR)
+	dbFile := filepath.Join(i.configs.ProfileDIR, "configurations", "store.db")
 	if err := i.migrator.Reset(dbFile); err != nil {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
@@ -67,41 +84,46 @@ func (i *Initializer) Register(email, password string) {
 	// create single server node
 	datasource := i.dataSource()
 	provider := i.provider(i.configs.Provider)
+
 	userService := users.NewService(users.NewRepository(datasource), i.passwordHandler)
 	clusterService := clusters.NewService(provider, clusters.NewRepository(datasource))
-	nodeService := nodes.NewService(provider, nodes.NewRepository(datasource))
+	nodeRepository := nodes.NewRepository(datasource)
+	if err := teams.NewRepository(datasource).Create(&teams.Team{
+		Name:        i.configs.DefaultTeam,
+		Identifier:  uuid.NewString(),
+		Description: "default team with full control"}); err != nil {
+		logging.GetInstance().Error(err)
+		os.Exit(-1)
+	}
 	if err := i.registerAdmin(email, password, userService); err != nil {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
-	} else if err := i.setupCluster(clusterService, nodeService, i.configs.DefaultTeam); err != nil {
+	} else if err := i.setupCluster(provider, clusterService, nodeRepository, i.configs.DefaultTeam); err != nil {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
 	}
 }
 
-func (i *Initializer) setupCluster(clusterService *clusters.ClusterService, nodeService *nodes.NodeService, team string) error {
-	if err := teams.NewRepository(i.dataSource()).Create(&teams.Team{
-		Identifier:  uuid.NewString(),
-		Name:        i.configs.DefaultTeam,
-		Description: "Default team with full control",
-	}); err != nil {
-		return err
-	}
+func (i *Initializer) setupCluster(provider providers.Provider, clusterService *clusters.ClusterService, repository nodes.NodeRepository, team string) error {
 	if err := clusterService.Create(&clusters.CreateClusterOrder{
 		Name:        i.configs.DefaultCluster,
 		Description: "Default cluster created for deployments",
 		Teams:       []string{i.configs.DefaultTeam},
 		Type:        clusters.CreateClusterOrder_DOCKER_SWARM,
 		Namespace:   "swarm",
-		Address:     i.configs.DefaultClusterAddress,
+		Address:     i.configs.DefaultClusterAdvertiseAddress,
 	}); err != nil {
+		logging.GetInstance().Info("initialization fools")
 		return err
-	} else if err := nodeService.Create(&nodes.CreateNodeOrder{
+	} else if leader, err := provider.Details(); err != nil {
+		return err
+	} else if err := repository.Create(&nodes.NodeEntry{
+		Identifier:  leader.ID,
 		Name:        "default",
 		Type:        "DOCKER",
-		Description: "Default node",
+		Description: "Leader node",
 		Cluster:     i.configs.DefaultCluster,
-		Address:     i.configs.DefaultClusterAddress,
+		Address:     leader.Address,
 	}); err != nil {
 		return err
 	}
@@ -109,24 +131,79 @@ func (i *Initializer) setupCluster(clusterService *clusters.ClusterService, node
 }
 
 func (i *Initializer) registerAdmin(email, password string, service *users.UserService) error {
-	return service.Create(&users.CreateUserOrder{Name: "admin", Email: email, Password: password})
-}
-
-func (i *Initializer) provider(name string) providers.Provider {
-	if name == "DOCKER-SWARN" {
-		return docker.NewProvider(i.plugin())
+	list := make([]string, 0)
+	if err := service.Create(&users.CreateUserOrder{
+		Name:     "administrator",
+		Nickname: "admin",
+		Email:    email,
+		Password: password}); err != nil {
+		return err
+	} else if data, err := server.Asset("resources/permissions.json"); err != nil {
+		return err
+	} else if err := json.Unmarshal(data, &list); err != nil {
+		return err
+	} else if err := service.AddPermissions(&users.UpdatePermissions{Email: email, Permissions: list}); err != nil {
+		return err
+	} else if err := service.AddTeams(&users.UpdateTeams{Email: email, Teams: []string{i.configs.DefaultTeam}}); err != nil {
+		return err
 	}
 	return nil
 }
 
-func (i *Initializer) plugin() providers.PluginParameterInjector {
-	instance := new(plugins.TraefikPlugin)
-	instance.Https = i.configs.Https
-	instance.CertResolverName = i.configs.CertResolver
-	return instance
+func (i *Initializer) provider(name string) providers.Provider {
+	if name == "DOCKER-SWARM" {
+		logging.GetInstance().Infof("Docker Swarm Provider")
+		return docker.NewProvider(
+			plugins.NewPluginRegistry(),
+			providers.NewClient(i.configs.AgentParameters),
+			docker.DockerServiceConfigurations{
+				NetworkName:   i.configs.NetworkName,
+				NetworkPrefix: i.configs.NetworkPrefix,
+			})
+	}
+	logging.GetInstance().Infof("No Supported Provider found")
+	return nil
 }
 
 func (i *Initializer) dataSource() database.DataSource {
-	dbFile := fmt.Sprintf("%s/configurations/store.db", i.configs.ProfileDIR)
+	dbFile := filepath.Join(i.configs.ProfileDIR, "configurations", "store.db")
 	return database.NewBuilder().EnableLogging().Path(dbFile).Build()
+}
+
+func (i *Initializer) permissions(datasource database.DataSource) error {
+	entries := []string{}
+	arguments := []interface{}{}
+	list := make([]string, 0)
+	if data, err := server.Asset("resources/permissions.json"); err != nil {
+		return err
+	} else if err := json.Unmarshal(data, &list); err != nil {
+		return err
+	} else {
+		for _, entry := range list {
+			entries = append(entries, "(?)")
+			arguments = append(arguments, entry)
+		}
+		var sql = "INSERT INTO permission_tb(name) VALUES %s"
+		sql = fmt.Sprintf(sql, strings.Join(entries, ","))
+		tx := datasource.Connection().Begin()
+		if err := tx.Exec(sql, arguments...).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit().Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		return nil
+	}
+}
+
+func (i *Initializer) hasPersmissions(datasource database.DataSource) (bool, error) {
+	sql := "EXISTS(SELECT 1 FROM permission_tb) AS has"
+	connection := datasource.Connection()
+	var has bool
+	if err := connection.Raw(sql, has).Error; err != nil {
+		return false, err
+	}
+	return has, nil
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 
 	"github.com/golang-migrate/migrate/v4/source"
@@ -88,7 +87,7 @@ func (e *Embedded) ReadUp(version uint) (r io.ReadCloser, identifier string, err
 		if err != nil {
 			return nil, "", err
 		}
-		return ioutil.NopCloser(bytes.NewReader(content)), migration.Identifier, nil
+		return io.NopCloser(bytes.NewReader(content)), migration.Identifier, nil
 	}
 	return nil, "", &os.PathError{Op: fmt.Sprintf("read version %v", version), Path: e.folder, Err: os.ErrNotExist}
 }
@@ -99,7 +98,7 @@ func (e *Embedded) ReadDown(version uint) (r io.ReadCloser, identifier string, e
 		if err != nil {
 			return nil, "", err
 		}
-		return ioutil.NopCloser(bytes.NewReader(content)), migration.Identifier, nil
+		return io.NopCloser(bytes.NewReader(content)), migration.Identifier, nil
 	}
 	return nil, "", &os.PathError{Op: fmt.Sprintf("read version %v", version), Path: e.folder, Err: os.ErrNotExist}
 }

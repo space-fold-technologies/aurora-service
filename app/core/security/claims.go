@@ -13,7 +13,6 @@ type Claims struct {
 	IssuedAt    *jwt.NumericDate `json:"iat,omitempty"`
 	ID          string           `json:"jti,omitempty"`
 	Teams       []string         `json:"teams,omitempty"`
-	Roles       []string         `json:"roles,omitempty"`
 	Permissions []string         `json:"permissions,omitempty"`
 }
 
@@ -27,7 +26,6 @@ func (c *Claims) ToMap() map[string]interface{} {
 	claimsData["iat"] = c.IssuedAt
 	claimsData["jti"] = c.ID
 	claimsData["teams"] = c.Teams
-	claimsData["roles"] = c.Roles
 	claimsData["permissions"] = c.Permissions
 	return claimsData
 }
@@ -41,7 +39,6 @@ func (c *Claims) FromMap(MapClaims map[string]interface{}) *Claims {
 	c.IssuedAt = MapClaims["iat"].(*jwt.NumericDate)
 	c.ID = MapClaims["jti"].(string)
 	c.Teams = MapClaims["teams"].([]string)
-	c.Roles = MapClaims["roles"].([]string)
 	c.Permissions = MapClaims["permissions"].([]string)
 	return c
 }

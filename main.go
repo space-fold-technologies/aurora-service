@@ -7,8 +7,6 @@ import (
 	"syscall"
 
 	"github.com/space-fold-technologies/aurora-service/app"
-	"github.com/space-fold-technologies/aurora-service/app/core/database"
-	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 )
 
 func main() {
@@ -16,11 +14,9 @@ func main() {
 	email := flag.String("email", "", "for admin email address")
 	password := flag.String("password", "", "for admin password")
 	flag.Parse()
-
+	initializer := app.NewInitializer()
 	if *mode == "run" || *mode == "RUN" {
-		if err := database.NewMigrationHandler().Migrate(""); err != nil {
-			logging.GetInstance().Error(err)
-		}
+		initializer.Migrate()
 		application := app.Application{}
 		application.Start()
 		c := make(chan os.Signal, 2)
@@ -28,10 +24,8 @@ func main() {
 		<-c
 		application.Stop()
 	} else if *mode == "setup" || *mode == "SETUP" {
-		initializer := app.Initializer{}
 		initializer.Register(*email, *password)
 	} else if *mode == "reset" || *mode == "RESET" {
-		initializer := app.Initializer{}
 		initializer.Reset()
 	}
 }

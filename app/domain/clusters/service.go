@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
 	"github.com/space-fold-technologies/aurora-service/app/domain/nodes"
@@ -24,14 +23,14 @@ func NewService(provider providers.Provider, repository ClusterRepository) *Clus
 }
 
 func (cs *ClusterService) Create(order *CreateClusterOrder) error {
-	return cs.registeCluster(order.GetName(), order.GetAddress(), order.GetType(), func(token string) error {
+	return cs.registeCluster(order.GetName(), order.GetAddress(), order.GetType(), func(id string) error {
 		return cs.repository.Create(&ClusterEntry{
-			Identifier:  uuid.NewString(),
+			Identifier:  id,
 			Name:        order.GetName(),
 			Description: order.GetDescription(),
 			Type:        order.GetType().String(),
 			Address:     order.GetAddress(),
-			Token:       token,
+			Namespace:   order.GetNamespace(),
 			Teams:       order.GetTeams(),
 		})
 	})
@@ -94,10 +93,10 @@ func (cs *ClusterService) registeCluster(name, address string, clusterType Creat
 	if clusterType == CreateClusterOrder_KUBERNETES_CLUSTER {
 		return errors.New("hi, we are not supporting kubernetes at this time :| sorry")
 	} else if clusterType == CreateClusterOrder_DOCKER_SWARM {
-		if token, err := cs.provider.Initialize(); err != nil {
+		if id, err := cs.provider.Initialize("0.0.0.0:2377", address); err != nil {
 			return err
 		} else {
-			return callback(token)
+			return callback(id)
 		}
 	}
 	return nil

@@ -1,7 +1,7 @@
 package environments
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/server/http/controllers"
@@ -27,30 +27,29 @@ func (ec *EnvironmentController) Name() string {
 func (ec *EnvironmentController) Initialize(RouteRegistry registry.RouterRegistry) {
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/create",
-		[]string{"environment.create"},
+		[]string{"environments.create"},
 		"PUT",
 		ec.create,
 	)
 
 	RouteRegistry.AddRestricted(
-		BASE_PATH+"/{env-scope}/{target-name}/list",
-		[]string{"environment.read"},
+		BASE_PATH+"/{scope}/{target}/list",
+		[]string{"environments.information"},
 		"GET",
 		ec.list,
 	)
 
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/remove",
-		[]string{"environment.remove"},
+		[]string{"environments.remove"},
 		"PUT",
 		ec.remove,
 	)
-
 }
 
 func (ec *EnvironmentController) create(w http.ResponseWriter, r *http.Request) {
 	order := &CreateEnvEntryOrder{}
-	if data, err := ioutil.ReadAll(r.Body); err != nil {
+	if data, err := io.ReadAll(r.Body); err != nil {
 		ec.BadRequest(w, err)
 	} else if err = proto.Unmarshal(data, order); err != nil {
 		ec.BadRequest(w, err)
@@ -63,7 +62,9 @@ func (ec *EnvironmentController) create(w http.ResponseWriter, r *http.Request) 
 
 func (ec *EnvironmentController) list(w http.ResponseWriter, r *http.Request) {
 	principals := ec.GetPrincipals(r)
-	if results, err := ec.service.List(principals); err != nil {
+	scope := ec.GetVar("scope", r)
+	target := ec.GetVar("target", r)
+	if results, err := ec.service.List(principals, scope, target); err != nil {
 		ec.ServiceFailure(w, err)
 	} else {
 		ec.OK(w, results)
@@ -72,7 +73,7 @@ func (ec *EnvironmentController) list(w http.ResponseWriter, r *http.Request) {
 
 func (ec *EnvironmentController) remove(w http.ResponseWriter, r *http.Request) {
 	order := &RemoveEnvEntryOrder{}
-	if data, err := ioutil.ReadAll(r.Body); err != nil {
+	if data, err := io.ReadAll(r.Body); err != nil {
 		ec.BadRequest(w, err)
 	} else if err = proto.Unmarshal(data, order); err != nil {
 		ec.BadRequest(w, err)

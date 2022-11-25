@@ -6,3 +6,5 @@ protoc -I protos/ protos/nodes.proto --go_out=app/domain/nodes
 protoc -I protos/ protos/envs.proto --go_out=app/domain/environments
 protoc -I protos/ protos/users.proto --go_out=app/domain/users
 protoc -I protos/ protos/teams.proto --go_out=app/domain/teams
+protoc -I protos/ protos/authorization.proto --go_out=app/domain/authorization
+protoc -I protos/ protos/agents.proto --go_out=app/core/providers

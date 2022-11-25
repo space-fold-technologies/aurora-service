@@ -1,0 +1,4 @@
+aurora-service.exe
+aurora-service
+app/core/server/content.go
+*.tar.gz

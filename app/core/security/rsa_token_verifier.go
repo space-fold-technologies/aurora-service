@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
+	"gopkg.in/square/go-jose.v2"
 	jwt "gopkg.in/square/go-jose.v2/jwt"
 )
 
@@ -26,21 +27,21 @@ var (
 	ErrNotRSAPublicKey     = errors.New("key is not a valid RSA public key")
 )
 
-type RSATokenVerifier struct {
+type RSATokenHandler struct {
 	publicKey  *rsa.PublicKey
 	privateKey *rsa.PrivateKey
 	log        *logrus.Logger
 }
 
-func New(publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey) TokenVerifier {
-	instance := new(RSATokenVerifier)
+func NewTokenHandler(publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey) TokenHandler {
+	instance := new(RSATokenHandler)
 	instance.log = logging.GetInstance()
 	instance.publicKey = publicKey
 	instance.privateKey = privateKey
 	return instance
 }
 
-func (ckv *RSATokenVerifier) VerifyToken(Token string) (*Claims, error) {
+func (ckv *RSATokenHandler) VerifyToken(Token string) (*Claims, error) {
 	claims := &Claims{}
 	tok, err := jwt.ParseEncrypted(Token)
 	if err != nil {
@@ -55,4 +56,23 @@ func (ckv *RSATokenVerifier) VerifyToken(Token string) (*Claims, error) {
 		return claims, errors.New(TOKEN_EXPIRED)
 	}
 	return claims, nil
+}
+
+func (ckv *RSATokenHandler) CreateToken(Claims *Claims) (string, error) {
+	if ckv.publicKey == nil {
+		return "", errors.New(NO_SIGNING_KEY_PRESENT)
+	}
+	enc, err := jose.NewEncrypter(
+		jose.A128GCM,
+		jose.Recipient{Algorithm: jose.RSA_OAEP, Key: ckv.publicKey},
+		(&jose.EncrypterOptions{}).WithType("JWT"),
+	)
+	if err != nil {
+		return "", err
+	}
+	raw, err := jwt.Encrypted(enc).Claims(Claims).CompactSerialize()
+	if err != nil {
+		return "", err
+	}
+	return raw, nil
 }

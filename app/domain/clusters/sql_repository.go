@@ -33,7 +33,6 @@ func (scr *SQLClusterRepository) Create(entry *ClusterEntry) error {
 		Type:        entry.Type,
 		Address:     entry.Address,
 		Namespace:   entry.Namespace,
-		Token:       entry.Token,
 		Teams:       nil,
 		Nodes:       nil,
 	}
@@ -87,6 +86,7 @@ func (scr *SQLClusterRepository) List(teams []string) ([]*Cluster, error) {
 	clusters := make([]*Cluster, 0)
 	connection := scr.dataSource.Connection()
 	if err := connection.Preload("Teams").
+		Preload("Nodes").
 		Joins("JOIN cluster_teams AS ct ON ct.cluster_id = cluster_tb.id").
 		Joins("JOIN team_tb AS t ON t.id = ct.team_id").
 		Where("t.name IN(?)", teams).

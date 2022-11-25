@@ -1,0 +1,12 @@
+DROP TRIGGER update_last_deployment;
+DROP TABLE user_permissions;
+DROP TABLE user_teams;
+DROP TABLE user_tb;
+DROP TABLE permission_tb;
+DROP TABLE environment_variable_tb;
+DROP TABLE container_tb;
+DROP TABLE deployment_tb;
+DROP TABLE node_tb;
+DROP TABLE team_clusters;
+DROP TABLE cluster_tb;
+DROP TABLE team_tb;

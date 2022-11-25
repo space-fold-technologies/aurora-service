@@ -1,0 +1,28 @@
+provider: DOCKER-SWARM
+profile-directory: /etc/aurora
+default-cluster: default
+default-cluster-listen-address: '0.0.0.0:2377'
+default-cluster-advertise-address: 10.7.96.4
+default-team: admin
+domain: kanika.app
+admin-session-duration: 24
+host: 0.0.0.0
+port: 1200
+https: false
+cert-resolver-name: letsencrypt
+cert-resolver-email: email.com
+network-name: default
+network-prefix: aurora
+plugins:
+  - traefik
+encryption:
+  memory: 65536
+  iterations: 4
+  parallelism: 2
+  salt-length: 16
+  key-length: 32
+agent-client:
+  retries: 10
+  maximum-jitter: 100
+  backoff-interval: 5
+  timeout: 10000

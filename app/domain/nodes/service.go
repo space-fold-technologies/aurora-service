@@ -3,6 +3,7 @@ package nodes
 import (
 	"fmt"
 
+	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 )
 
@@ -18,22 +19,31 @@ func NewService(provider providers.Provider, repository NodeRepository) *NodeSer
 	return instance
 }
 
-func (ns *NodeService) Create(order *CreateNodeOrder) error {
+func (ns *NodeService) Create(order *CreateNodeOrder, token string) error {
 	if info, err := ns.repository.FetchClusterInfo(order.GetCluster()); err != nil {
 		return err
-	} else if details, err := ns.provider.Join(&providers.JoinOrder{ClusterAddress: info.Address, IP: order.GetAddress(), Token: info.Token}); err != nil {
-		return err
 	} else {
-		return ns.repository.Create(&NodeEntry{
-			Name:        order.GetName(),
-			Identifier:  details.ID,
-			Type:        order.GetType(),
-			Description: order.GetDescription(),
-			Address:     details.IP,
-			Cluster:     order.GetCluster(),
-		})
+		go func() {
+			if details, err := ns.provider.Join(&providers.JoinOrder{
+				Name:           order.Name,
+				CaptainAddress: info.Address,
+				WorkerAddress:  order.GetAddress(),
+				Token:          token,
+			}); err != nil {
+				logging.GetInstance().Error(err)
+			} else if err := ns.repository.Create(&NodeEntry{
+				Name:        order.GetName(),
+				Identifier:  details.ID,
+				Type:        order.GetType(),
+				Description: order.GetDescription(),
+				Address:     order.GetAddress(),
+				Cluster:     order.GetCluster(),
+			}); err != nil {
+				logging.GetInstance().Error(err)
+			}
+		}()
+		return nil
 	}
-
 }
 
 func (ns *NodeService) Update(order *UpdateNodeOrder) error {
@@ -59,14 +69,17 @@ func (ns *NodeService) List(cluster string) (*Nodes, error) {
 	}
 }
 
-func (ns *NodeService) Remove(name string) error {
+func (ns *NodeService) Remove(name, token string) error {
 	if hasContainers, err := ns.repository.HasContainers(name); err != nil {
 		return err
 	} else if hasContainers {
 		return fmt.Errorf("cannot remove node with running containers")
 	} else if node, err := ns.repository.FetchSummary(name); err != nil {
 		return err
-	} else if err := ns.provider.Leave(node.Identifier); err != nil {
+	} else if err := ns.provider.Leave(&providers.LeaveOrder{
+		NodeID:  node.Identifier,
+		Address: node.Address,
+		Token:   token}); err != nil {
 		return err
 	}
 	return ns.repository.Remove(name)

@@ -1,7 +1,0 @@
-provider: DOCKER-SWARM
-profile-directory: some directory to store stuff for the application # Path on file system to good stuff
-default-cluster: default # BECAUSE YOU SUCK
-default-cluster-address: 0.0.0.0
-default-team: admin
-domain: 78.141.218.173.nip.io # USE YOU OWN DOMAIN
-admin-session-duration: 24 # HOURS

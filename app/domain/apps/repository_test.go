@@ -362,6 +362,7 @@ var _ = Describe("Application store tests", func() {
 				Status:     "DEPLOYED",
 				Report:     "Application successfully deployed",
 				ServiceID:  serviceId,
+				ImageURI:   "sme:digest",
 				UpdatedAt:  &updatedAt,
 			})
 		})

@@ -4,13 +4,13 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/configuration"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
+	"github.com/space-fold-technologies/aurora-service/app/core/plugins"
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
 	"github.com/space-fold-technologies/aurora-service/app/core/server"
 )
@@ -21,17 +21,21 @@ type Application struct {
 	details          server.Details
 	serviceResources *ServiceResources
 	hashHandler      security.HashHandler
+	tokenHandler     security.TokenHandler
+	pluginRegistry   plugins.PluginRegistry
 }
 
 func (a *Application) onStartUp() bool {
 	// services to start the system with
 	logging.GetInstance().Info("START UP INITIALIZATION")
 	a.serviceResources.Initialize()
+	a.pluginRegistry.StartUp()
 	return true
 }
 
 func (a *Application) onShutdown() bool {
 	// services to shutdown and resources to clean up
+	a.pluginRegistry.Shutdown()
 	logging.GetInstance().Info("SHUTDOWN CALLED")
 	return true
 }
@@ -39,17 +43,17 @@ func (a *Application) onShutdown() bool {
 func (a *Application) Start() {
 	a.details = server.FetchApplicationDetails()
 	a.configs = configuration.ParseFromResource()
-	configurationPath := fmt.Sprintf("%s/configurations", a.configs.ProfileDIR)
+	configurationPath := filepath.Join(a.configs.ProfileDIR, "configurations")
 	if _, err := os.Stat(configurationPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(configurationPath, fs.ModeAppend); err != nil {
 			logging.GetInstance().Error(err)
 			os.Exit(-1)
 		}
 	}
-	if privateKeyBytes, err := ioutil.ReadFile(fmt.Sprintf("%s/keys/private-rsa-key.pem", a.configs.ProfileDIR)); err != nil {
+	if privateKeyBytes, err := os.ReadFile(filepath.Join(a.configs.ProfileDIR, "keys", "private-rsa-key.pem")); err != nil {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
-	} else if publicKeyBytes, err := ioutil.ReadFile(fmt.Sprintf("%s/keys/public-rsa-key.pem", a.configs.ProfileDIR)); err != nil {
+	} else if publicKeyBytes, err := os.ReadFile(filepath.Join(a.configs.ProfileDIR, "keys", "public-rsa-key.pem")); err != nil {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
 	} else if privateKey, err := parseRSAPrivateKeyFromPEM(privateKeyBytes); err != nil {
@@ -59,19 +63,23 @@ func (a *Application) Start() {
 		logging.GetInstance().Error(err)
 		os.Exit(-1)
 	} else {
-		tokenVerifier := security.New(publicKey, privateKey)
 		a.hashHandler = security.NewHashHandler(publicKey, privateKey)
+		a.tokenHandler = security.NewTokenHandler(publicKey, privateKey)
+		a.pluginRegistry = plugins.NewPluginRegistry()
 		a.server = server.New(
 			a.details,
 			a.configs.Host,
 			a.configs.Port,
-			tokenVerifier,
+			a.tokenHandler,
 		)
 	}
+
 	a.serviceResources = ProduceServiceResources(
 		a.server,
 		a.configs,
+		a.tokenHandler,
 		a.hashHandler,
+		a.pluginRegistry,
 	)
 	a.server.OnStartUp(a.onStartUp)
 	a.server.OnShutDown(a.onShutdown)

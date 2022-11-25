@@ -1,3 +1,12 @@
 {
-    "netbeans.javaSupport.enabled": true
+    "netbeans.javaSupport.enabled": true,
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "aurora",
+            "group": "test",
+            "database": "C:\\Users\\ACERAT\\.aurora-service\\configurations\\store.db"
+        }
+    ]
 }

@@ -80,10 +80,10 @@ func (sar *SQLApplicationRepository) RegisterDeploymentEntry(order *DeploymentOr
 }
 
 func (sar *SQLApplicationRepository) UpdateDeploymentEntry(order *DeploymentUpdate) error {
-	sql := "UPDATE deployment_tb SET status = ?, report = ?, completed_at = ?, service_identifier = ? WHERE identifier = ?"
+	sql := "UPDATE deployment_tb SET status = ?, report = ?, completed_at = ?, image_uri = ?, service_identifier = ? WHERE identifier = ?"
 	tx := sar.dataSource.Connection().Begin()
 
-	if err := tx.Exec(sql, order.Status, order.Report, order.UpdatedAt, order.ServiceID, order.Identifier).Error; err != nil {
+	if err := tx.Exec(sql, order.Status, order.Report, order.UpdatedAt, order.ImageURI, order.ServiceID, order.Identifier).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -136,6 +136,7 @@ func (sar *SQLApplicationRepository) AddContainers(orders []*ContainerOrder) err
 	}
 	return tx.Commit().Error
 }
+
 func (sar *SQLApplicationRepository) RemoveContainer(Identifier string) error {
 	sql := "DELETE FROM container_tb WHERE identifier = ?"
 	tx := sar.dataSource.Connection().Begin()
@@ -149,4 +150,58 @@ func (sar *SQLApplicationRepository) RemoveContainer(Identifier string) error {
 		return err
 	}
 	return tx.Commit().Error
+}
+
+func (sar *SQLApplicationRepository) Deployed(name string) (*LastDeployment, error) {
+	sql := "SELECT a.identifier, d.service_identifier FROM deployment_tb AS d " +
+		"INNER JOIN application_tb AS a ON d.application_id = a.id " +
+		"WHERE a.name = ? AND d.status = ? AND d.completed_at = a.last_deployment"
+	deployment := &LastDeployment{}
+	connection := sar.dataSource.Connection()
+	if err := connection.Raw(sql, name, "DEPLOYED").First(deployment).Error; err != nil {
+		return nil, err
+	}
+	return deployment, nil
+}
+
+func (sar *SQLApplicationRepository) RemoveContainers(applicationId string) error {
+	sql := "DELETE FROM container_tb WHERE " +
+		"application_id = (SELECT a.id FROM application_tb AS a WHERE a.identifier = ?"
+	tx := sar.dataSource.Connection().Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+	if err := tx.Exec(sql, applicationId).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit().Error
+}
+
+func (sar *SQLApplicationRepository) Deployments(name string) ([]*DeploymentDetails, error) {
+	connection := sar.dataSource.Connection()
+	deployments := make([]*DeploymentDetails, 0)
+	sql := "SELECT d.identifier, d.image_uri, d.status, d.report, d.completed_at " +
+		"FROM deployment_tb AS d " +
+		"INNER JOIN application_tb AS a ON a.id = d.application_id " +
+		"WHERE a.name = ? " +
+		"ORDER BY d.completed_at ASC"
+	if err := connection.Raw(sql, name).Find(&deployments).Error; err != nil {
+		return nil, err
+	}
+	return deployments, nil
+}
+
+func (sar *SQLApplicationRepository) FetchDeployment(identifier string) (*DeploymentSummary, error) {
+	connection := sar.dataSource.Connection()
+	summary := &DeploymentSummary{}
+	sql := "SELECT d.image_uri, a.name FROM deployment_tb AS d " +
+		"INNER JOIN application_tb AS a ON a.id = d.application_id " +
+		"WHERE d.identifier = ?"
+	if err := connection.Raw(sql, identifier).First(summary).Error; err != nil {
+		return nil, err
+	}
+	return summary, nil
 }
