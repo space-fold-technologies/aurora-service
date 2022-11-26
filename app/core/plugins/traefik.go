@@ -61,7 +61,7 @@ func (tp *TraefikPlugin) OnStartUp() error {
 	if tp.https {
 		ports = append(ports, 443)
 	}
-	if identifier, err := tp.provider.CreateApplication(&providers.ApplicationOrder{
+	if identifier, err := tp.provider.DeployDependency(&providers.DependencyOrder{
 		ID:      "traefik-plugin",
 		Name:    "internal-traefik-proxy",
 		URI:     "traefik:2.9.5",

@@ -157,8 +157,10 @@ func (i *Initializer) provider(name string) providers.Provider {
 			plugins.NewPluginRegistry(),
 			providers.NewClient(i.configs.AgentParameters),
 			docker.DockerServiceConfigurations{
-				NetworkName:   i.configs.NetworkName,
-				NetworkPrefix: i.configs.NetworkPrefix,
+				NetworkName:        i.configs.NetworkName,
+				NetworkPrefix:      i.configs.NetworkPrefix,
+				ListenerAddress:    i.configs.DefaultClusterListenAddress,
+				AdvertisingAddress: i.configs.DefaultClusterAdvertiseAddress,
 			})
 	}
 	logging.GetInstance().Infof("No Supported Provider found")

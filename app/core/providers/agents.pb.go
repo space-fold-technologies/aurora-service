@@ -130,6 +130,140 @@ func (x *RemoveAgent) GetId() string {
 	return ""
 }
 
+type ContainerReport struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Containers []*ContainerReport_Container `protobuf:"bytes,1,rep,name=containers,proto3" json:"containers,omitempty"`
+}
+
+func (x *ContainerReport) Reset() {
+	*x = ContainerReport{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_agents_proto_msgTypes[2]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ContainerReport) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContainerReport) ProtoMessage() {}
+
+func (x *ContainerReport) ProtoReflect() protoreflect.Message {
+	mi := &file_agents_proto_msgTypes[2]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContainerReport.ProtoReflect.Descriptor instead.
+func (*ContainerReport) Descriptor() ([]byte, []int) {
+	return file_agents_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ContainerReport) GetContainers() []*ContainerReport_Container {
+	if x != nil {
+		return x.Containers
+	}
+	return nil
+}
+
+type ContainerReport_Container struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Identifier        string `protobuf:"bytes,1,opt,name=identifier,proto3" json:"identifier,omitempty"`
+	NodeIdentifier    string `protobuf:"bytes,2,opt,name=node_identifier,json=nodeIdentifier,proto3" json:"node_identifier,omitempty"`
+	TaskIdentifier    string `protobuf:"bytes,3,opt,name=task_identifier,json=taskIdentifier,proto3" json:"task_identifier,omitempty"`
+	ServiceIdentifier string `protobuf:"bytes,4,opt,name=service_identifier,json=serviceIdentifier,proto3" json:"service_identifier,omitempty"`
+	IpAddress         string `protobuf:"bytes,5,opt,name=ip_address,json=ipAddress,proto3" json:"ip_address,omitempty"`
+	AddressFamily     int32  `protobuf:"varint,6,opt,name=address_family,json=addressFamily,proto3" json:"address_family,omitempty"`
+}
+
+func (x *ContainerReport_Container) Reset() {
+	*x = ContainerReport_Container{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_agents_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ContainerReport_Container) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContainerReport_Container) ProtoMessage() {}
+
+func (x *ContainerReport_Container) ProtoReflect() protoreflect.Message {
+	mi := &file_agents_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContainerReport_Container.ProtoReflect.Descriptor instead.
+func (*ContainerReport_Container) Descriptor() ([]byte, []int) {
+	return file_agents_proto_rawDescGZIP(), []int{2, 0}
+}
+
+func (x *ContainerReport_Container) GetIdentifier() string {
+	if x != nil {
+		return x.Identifier
+	}
+	return ""
+}
+
+func (x *ContainerReport_Container) GetNodeIdentifier() string {
+	if x != nil {
+		return x.NodeIdentifier
+	}
+	return ""
+}
+
+func (x *ContainerReport_Container) GetTaskIdentifier() string {
+	if x != nil {
+		return x.TaskIdentifier
+	}
+	return ""
+}
+
+func (x *ContainerReport_Container) GetServiceIdentifier() string {
+	if x != nil {
+		return x.ServiceIdentifier
+	}
+	return ""
+}
+
+func (x *ContainerReport_Container) GetIpAddress() string {
+	if x != nil {
+		return x.IpAddress
+	}
+	return ""
+}
+
+func (x *ContainerReport_Container) GetAddressFamily() int32 {
+	if x != nil {
+		return x.AddressFamily
+	}
+	return 0
+}
+
 var File_agents_proto protoreflect.FileDescriptor
 
 var file_agents_proto_rawDesc = []byte{
@@ -141,8 +275,28 @@ var file_agents_proto_rawDesc = []byte{
 	0x72, 0x65, 0x73, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x61, 0x64, 0x64, 0x72,
 	0x65, 0x73, 0x73, 0x22, 0x1d, 0x0a, 0x0b, 0x52, 0x65, 0x6d, 0x6f, 0x76, 0x65, 0x41, 0x67, 0x65,
 	0x6e, 0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02,
-	0x69, 0x64, 0x42, 0x0d, 0x5a, 0x0b, 0x2e, 0x3b, 0x70, 0x72, 0x6f, 0x76, 0x69, 0x64, 0x65, 0x72,
-	0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x69, 0x64, 0x22, 0xc2, 0x02, 0x0a, 0x0f, 0x43, 0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72,
+	0x52, 0x65, 0x70, 0x6f, 0x72, 0x74, 0x12, 0x3a, 0x0a, 0x0a, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x69,
+	0x6e, 0x65, 0x72, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x43, 0x6f, 0x6e,
+	0x74, 0x61, 0x69, 0x6e, 0x65, 0x72, 0x52, 0x65, 0x70, 0x6f, 0x72, 0x74, 0x2e, 0x43, 0x6f, 0x6e,
+	0x74, 0x61, 0x69, 0x6e, 0x65, 0x72, 0x52, 0x0a, 0x63, 0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65,
+	0x72, 0x73, 0x1a, 0xf2, 0x01, 0x0a, 0x09, 0x43, 0x6f, 0x6e, 0x74, 0x61, 0x69, 0x6e, 0x65, 0x72,
+	0x12, 0x1e, 0x0a, 0x0a, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x72, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x0a, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x72,
+	0x12, 0x27, 0x0a, 0x0f, 0x6e, 0x6f, 0x64, 0x65, 0x5f, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66,
+	0x69, 0x65, 0x72, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0e, 0x6e, 0x6f, 0x64, 0x65, 0x49,
+	0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x72, 0x12, 0x27, 0x0a, 0x0f, 0x74, 0x61, 0x73,
+	0x6b, 0x5f, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x72, 0x18, 0x03, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x0e, 0x74, 0x61, 0x73, 0x6b, 0x49, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69,
+	0x65, 0x72, 0x12, 0x2d, 0x0a, 0x12, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x5f, 0x69, 0x64,
+	0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x72, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x11,
+	0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x49, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65,
+	0x72, 0x12, 0x1d, 0x0a, 0x0a, 0x69, 0x70, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18,
+	0x05, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x69, 0x70, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73,
+	0x12, 0x25, 0x0a, 0x0e, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x5f, 0x66, 0x61, 0x6d, 0x69,
+	0x6c, 0x79, 0x18, 0x06, 0x20, 0x01, 0x28, 0x05, 0x52, 0x0d, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73,
+	0x73, 0x46, 0x61, 0x6d, 0x69, 0x6c, 0x79, 0x42, 0x0d, 0x5a, 0x0b, 0x2e, 0x3b, 0x70, 0x72, 0x6f,
+	0x76, 0x69, 0x64, 0x65, 0x72, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -157,17 +311,20 @@ func file_agents_proto_rawDescGZIP() []byte {
 	return file_agents_proto_rawDescData
 }
 
-var file_agents_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_agents_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_agents_proto_goTypes = []interface{}{
-	(*RegisterAgent)(nil), // 0: RegisterAgent
-	(*RemoveAgent)(nil),   // 1: RemoveAgent
+	(*RegisterAgent)(nil),             // 0: RegisterAgent
+	(*RemoveAgent)(nil),               // 1: RemoveAgent
+	(*ContainerReport)(nil),           // 2: ContainerReport
+	(*ContainerReport_Container)(nil), // 3: ContainerReport.Container
 }
 var file_agents_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	3, // 0: ContainerReport.containers:type_name -> ContainerReport.Container
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_agents_proto_init() }
@@ -200,6 +357,30 @@ func file_agents_proto_init() {
 				return nil
 			}
 		}
+		file_agents_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ContainerReport); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_agents_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ContainerReport_Container); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -207,7 +388,7 @@ func file_agents_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_agents_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

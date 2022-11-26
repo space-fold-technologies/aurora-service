@@ -4,20 +4,65 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-
-	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 )
 
-func Parse(r *http.Request) *providers.TerminalProperties {
-	return &providers.TerminalProperties{
-		Identifier:     r.Header.Values("identifier")[0],
-		Name:           r.Header.Values("name")[0],
-		Width:          ToInt(r.Header.Values("width")[0]),
-		Heigth:         ToInt(r.Header.Values("height")[0]),
-		ClientTerminal: SafeFetch("term", r),
-		Token:          SafeFetch("token", r),
-		Isolated:       ToBool(r.Header.Values("isolated")[0]),
+type LogProperties struct {
+	Name   string
+	Width  int
+	Height int
+	Token  string
+}
+
+func ParseLogProperties(r *http.Request) *LogProperties {
+	return &LogProperties{
+		Name:   r.Header.Values("name")[0],
+		Width:  ToInt(r.Header.Values("width")[0]),
+		Height: ToInt(r.Header.Values("height")[0]),
+		Token:  SafeFetch("token", r),
 	}
+}
+
+type ShellProperties struct {
+	Name       string
+	Identifier string
+	Width      int
+	Height     int
+	Term       string
+	Token      string
+}
+
+func ParseShellProperties(r *http.Request) *ShellProperties {
+	return &ShellProperties{
+		Identifier: r.Header.Values("identifier")[0],
+		Name:       r.Header.Values("name")[0],
+		Width:      ToInt(r.Header.Values("width")[0]),
+		Height:     ToInt(r.Header.Values("height")[0]),
+		Term:       SafeFetch("term", r),
+		Token:      SafeFetch("token", r),
+	}
+}
+
+type DeploymentProperties struct {
+	Name       string
+	Identifier string
+	Token      string
+}
+
+func ParseDeploymentProperties(r *http.Request) *DeploymentProperties {
+	return &DeploymentProperties{
+		Identifier: r.Header.Values("identifier")[0],
+		Name:       r.Header.Values("name")[0],
+		Token:      SafeFetch("token", r),
+	}
+}
+
+type RollbackProperties struct {
+	Name       string
+	Identifier string
+}
+
+func ParseRollbackProperties(r *http.Request) *RollbackProperties {
+	return &RollbackProperties{Name: r.Header.Values("name")[0], Identifier: r.Header.Values("identifier")[0]}
 }
 
 func ToInt(val string) int {

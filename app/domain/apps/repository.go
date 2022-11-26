@@ -11,6 +11,7 @@ type ApplicationRepository interface {
 	FetchImageURI(identifier string) (string, error)
 	FetchEnvVars(name string) ([]*EnvVarEntry, error)
 	AddContainers(order []*ContainerOrder) error
+	FetchContainer(identifier string) (*ContainerDetails, error)
 	RemoveContainer(Identifier string) error
 	Deployed(name string) (*LastDeployment, error)
 	RemoveContainers(applicationId string) error
