@@ -120,3 +120,23 @@ Run the command to create a system administration use and re-own the created dat
 ```
 
 Everything should be running ok now
+
+### What's Next ? ###
+
+To use the `PaaS` you can check out [Aurora CLI](https://github.com/space-fold-technologies/aurora-client) which can be used on your developer work station. \
+
+To add more nodes to your cluster, you can use the [Aurora Agent](https://github.com/space-fold-technologies/aurora-agent)
+
+### Features ###
+  
+- [x] Docker Swarm Integration
+- [x] Traefik Reverse Proxy Support
+- [ ] Kubernetes Integration
+- [ ] Podman Integration
+- [x] Agent Node Integration
+- [ ] Agent Node Stats
+- [ ] Management Dashboard
+- [ ] Scheduled container checks
+- [ ] Integrated Services / Catridges[`PostgreSQL`,`MariaDB`,`Redis`,`RabbitMQ`]
+
+
