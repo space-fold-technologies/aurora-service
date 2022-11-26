@@ -79,16 +79,10 @@ func (ac *AppController) Initialize(RouteRegistry registry.RouterRegistry) {
 		ac.update,
 	)
 	RouteRegistry.AddRestricted(
-		BASE_PATH+"/log-container",
+		BASE_PATH+"/log",
 		[]string{"apps.information"},
 		"GET",
-		ac.logContainer,
-	)
-	RouteRegistry.AddRestricted(
-		BASE_PATH+"/log-service",
-		[]string{"apps.information"},
-		"GET",
-		ac.logService,
+		ac.log,
 	)
 	RouteRegistry.AddRestricted(
 		BASE_PATH+"/shell",
@@ -126,7 +120,7 @@ func (ac *AppController) create(w http.ResponseWriter, r *http.Request) {
 func (ac *AppController) deploy(w http.ResponseWriter, r *http.Request) {
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Deploy(ws, Parse(r)); err != nil {
+	} else if err := ac.service.Deploy(ws, ParseDeploymentProperties(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }
@@ -178,20 +172,20 @@ func (ac *AppController) update(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (ac *AppController) logContainer(w http.ResponseWriter, r *http.Request) {
-	//Requires a web socket connetion
-	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
-		ac.ServiceFailure(w, err)
-	} else if err := ac.service.LogContainer(ws, Parse(r)); err != nil {
-		ac.ServiceFailure(w, err)
-	}
-}
+// func (ac *AppController) logContainer(w http.ResponseWriter, r *http.Request) {
+// 	//Requires a web socket connetion
+// 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
+// 		ac.ServiceFailure(w, err)
+// 	} else if err := ac.service.LogContainer(ws, Parse(r)); err != nil {
+// 		ac.ServiceFailure(w, err)
+// 	}
+// }
 
-func (ac *AppController) logService(w http.ResponseWriter, r *http.Request) {
+func (ac *AppController) log(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.LogService(ws, Parse(r)); err != nil {
+	} else if err := ac.service.Log(ws, ParseLogProperties(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }
@@ -200,7 +194,7 @@ func (ac *AppController) shell(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Shell(ws, Parse(r)); err != nil {
+	} else if err := ac.service.Shell(ws, ParseShellProperties(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }
@@ -218,7 +212,7 @@ func (ac *AppController) rollback(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Rollback(ws, Parse(r)); err != nil {
+	} else if err := ac.service.Rollback(ws, ParseRollbackProperties(r)); err != nil {
 		ac.ServiceFailure(w, err)
 	}
 }

@@ -64,10 +64,32 @@ func (rc *retryClient) Leave(ctx context.Context, order *RemoveAgent, address, t
 	return rc.put(ctx, uri, token, order)
 }
 
+func (rc *retryClient) Containers(ctx context.Context, serviceId, address, token string) (*ContainerReport, error) {
+	uri := fmt.Sprintf("http://%s:2700/api/v1/aurora-agent/agents/%s/containers", address, serviceId)
+	report := &ContainerReport{}
+	if err := rc.get(ctx, uri, token, report); err != nil {
+		return nil, err
+	}
+	return report, nil
+}
+
 func (rc *retryClient) put(ctx context.Context, path, token string, in proto.Message) error {
 	if data, err := proto.Marshal(in); err != nil {
 
 	} else if request, err := http.NewRequestWithContext(ctx, http.MethodPut, path, bytes.NewBuffer(data)); err != nil {
+		return err
+	} else if response, err := rc.authorizedClient(request, token); err != nil {
+		return err
+	} else if response.StatusCode != 204 {
+		if _, err := io.ReadAll(response.Body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (rc *retryClient) get(ctx context.Context, path, token string, out proto.Message) error {
+	if request, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil); err != nil {
 		return err
 	} else if response, err := rc.authorizedClient(request, token); err != nil {
 		return err

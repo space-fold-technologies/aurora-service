@@ -5,8 +5,10 @@ type ProgressChunk struct {
 }
 
 type ContainerDetails struct {
-	ID        string
-	NodeID    string
-	TaskID    string
-	ServiceID string
+	ID            string
+	NodeID        string
+	TaskID        string
+	ServiceID     string
+	IPAddress     string
+	AddressFamily uint
 }

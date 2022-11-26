@@ -72,3 +72,8 @@ type DeploymentSummary struct {
 	ImageURI string `gorm:"column:image_uri;type:varchar;not null"`
 	Name     string `gorm:"column:name;type:varchar;not null"`
 }
+
+type ContainerDetails struct {
+	ID     string `gorm:"column:container_identifier;type:varchar;not null"`
+	NodeIP string `gorm:"column:node_address;type:varchar;not null"`
+}

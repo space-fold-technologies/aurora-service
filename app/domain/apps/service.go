@@ -1,7 +1,6 @@
 package apps
 
 import (
-	"context"
 	"encoding/base64"
 	"time"
 
@@ -13,6 +12,19 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// type reporter struct {
+// 	ws *websocket.Conn
+// 	as *AppService
+// }
+
+// func (r *reporter) Done(report providers.Report) error {
+// 	return r.as.processReport(ctx, properties.Identifier, properties.Name, report)
+// }
+
+// func (r *reporter) Progress(line []byte) {
+// 	r.ws.WriteMessage(websocket.TextMessage, line)
+// }
 
 type AppService struct {
 	repository ApplicationRepository
@@ -60,7 +72,7 @@ func (as *AppService) SetupDeployment(order *DeployAppOrder) (*DeploymentPass, e
 	return pass, nil
 }
 
-func (as *AppService) Deploy(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+func (as *AppService) Deploy(ws *websocket.Conn, properties *DeploymentProperties) error {
 	if uri, err := as.repository.FetchImageURI(properties.Identifier); err != nil {
 		return err
 	} else if vars, err := as.repository.FetchEnvVars(properties.Name); err != nil {
@@ -68,13 +80,13 @@ func (as *AppService) Deploy(ws *websocket.Conn, properties *providers.TerminalP
 	} else if app, err := as.repository.FetchDetails(properties.Name); err != nil {
 		return err
 	} else {
-		order := &providers.Order{
-			Name:       app.Name,
-			Identifier: properties.Identifier,
-			URI:        uri,
-			Variables:  as.variables(vars),
-			Volumes:    []providers.Mount{},
-			Scale:      uint(app.Scale),
+		order := &providers.DeploymentOrder{
+			Name:                 app.Name,
+			ID:                   properties.Identifier,
+			ImageURI:             uri,
+			EnvironmentVariables: as.variables(vars),
+			Volumes:              []providers.Mount{},
+			Scale:                uint(app.Scale),
 		}
 		if len(properties.Token) > 0 {
 			if data, err := base64.URLEncoding.DecodeString(properties.Token); err != nil {
@@ -92,45 +104,41 @@ func (as *AppService) Deploy(ws *websocket.Conn, properties *providers.TerminalP
 				}
 			}
 		}
-		return as.provider.Deploy(
-			ws,
-			properties,
-			order,
-			func(ctx context.Context, report *providers.Report) error {
-				return as.processReport(ctx, properties.Identifier, properties.Name, report)
-			})
+		reporter := providers.Reporter{
+			Done: func(report providers.Report) error {
+				return as.processReport(properties.Identifier, properties.Name, &report)
+			},
+			Progress: func(line []byte) { ws.WriteMessage(websocket.TextMessage, line) },
+		}
+		return as.provider.DeployService(ws, order, &reporter)
 	}
 }
 
-func (as *AppService) LogContainer(ws *websocket.Conn, properties *providers.TerminalProperties) error {
-	logging.GetInstance().Infof("Logging Container: %s For App : %s", properties.Identifier, properties.Name)
-	if err := as.provider.LogContainer(ws, properties, properties.Identifier); err != nil {
-		return err
-
-	}
-	return nil
-}
-
-func (as *AppService) LogService(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+func (as *AppService) Log(ws *websocket.Conn, properties *LogProperties) error {
 	if deployment, err := as.repository.Deployed(properties.Name); err != nil {
 		return err
 	} else {
 		logging.GetInstance().Infof("Service Id: %s For App : %s", deployment.ServiceID, properties.Name)
-		if err := as.provider.LogService(ws, properties, deployment.ServiceID); err != nil {
+		if err := as.provider.Log(ws, &providers.LogProperties{ServiceID: deployment.ServiceID}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (as *AppService) Shell(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+func (as *AppService) Shell(ws *websocket.Conn, properties *ShellProperties) error {
 	// Will need to read a lot more on this one
-	if details, err := as.repository.FetchDetails(properties.Name); err != nil {
+	if details, err := as.repository.FetchContainer(properties.Identifier); err != nil {
 		return err
-	} else if len(details.Instances) > 0 {
-		container := details.Instances[0]
-		logging.GetInstance().Infof("Shell Container: %s For App : %s", container.Identifier, properties.Name)
-		as.provider.Shell(ws, properties, container.Identifier)
+	} else {
+		logging.GetInstance().Infof("Shell Container: %s For App : %s", details.ID, properties.Name)
+		as.provider.Shell(ws, &providers.ShellProperties{
+			ContainerID: details.ID,
+			Host:        details.NodeIP,
+			Width:       properties.Width,
+			Heigth:      properties.Height,
+			Terminal:    properties.Term,
+		})
 	}
 	return nil
 }
@@ -210,7 +218,7 @@ func (as *AppService) Deployments(name string) (*Deployments, error) {
 	}
 }
 
-func (as *AppService) Rollback(ws *websocket.Conn, properties *providers.TerminalProperties) error {
+func (as *AppService) Rollback(ws *websocket.Conn, properties *RollbackProperties) error {
 	if summary, err := as.repository.FetchDeployment(properties.Identifier); err != nil {
 		return err
 	} else if vars, err := as.repository.FetchEnvVars(summary.Name); err != nil {
@@ -218,23 +226,25 @@ func (as *AppService) Rollback(ws *websocket.Conn, properties *providers.Termina
 	} else if app, err := as.repository.FetchDetails(summary.Name); err != nil {
 		return err
 	} else {
-		return as.provider.Deploy(
-			ws,
-			properties,
-			&providers.Order{
-				Identifier: properties.Identifier,
-				URI:        summary.ImageURI,
-				Variables:  as.variables(vars),
-				Volumes:    []providers.Mount{},
-				Scale:      uint(app.Scale),
+		reporter := providers.Reporter{
+			Done: func(report providers.Report) error {
+				return as.processReport(properties.Identifier, properties.Name, &report)
 			},
-			func(ctx context.Context, report *providers.Report) error {
-				return as.processReport(ctx, properties.Identifier, properties.Name, report)
-			})
+			Progress: func(line []byte) { ws.WriteMessage(websocket.TextMessage, line) },
+		}
+		return as.provider.DeployService(
+			ws,
+			&providers.DeploymentOrder{
+				ID:                   properties.Identifier,
+				ImageURI:             summary.ImageURI,
+				EnvironmentVariables: as.variables(vars),
+				Volumes:              []providers.Mount{},
+				Scale:                uint(app.Scale),
+			}, &reporter)
 	}
 }
 
-func (as *AppService) processReport(ctx context.Context, identifier, name string, report *providers.Report) error {
+func (as *AppService) processReport(identifier, name string, report *providers.Report) error {
 	completedAt := time.Now().UTC()
 	if err := as.repository.UpdateDeploymentEntry(&DeploymentUpdate{
 		Identifier: identifier,
@@ -270,16 +280,16 @@ func (as *AppService) reset(name string) error {
 		return err
 	} else if err = as.repository.RemoveContainers(deployment.ApplicationID); err != nil {
 		return err
-	} else if as.provider.Nuke(deployment.ServiceID); err != nil {
+	} else if as.provider.Stop(deployment.ServiceID); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (as *AppService) variables(vars []*EnvVarEntry) []*providers.Variable {
-	variables := make([]*providers.Variable, 0)
+func (as *AppService) variables(vars []*EnvVarEntry) map[string]string {
+	variables := make(map[string]string)
 	for _, entry := range vars {
-		variables = append(variables, &providers.Variable{Key: entry.Key, Value: entry.Val})
+		variables[entry.Key] = entry.Val
 	}
 	return variables
 }

@@ -11,3 +11,15 @@ message RegisterAgent {
 message RemoveAgent {
     string id = 1;
 }
+
+message ContainerReport {
+    repeated Container containers = 1;
+    message Container {
+        string identifier = 1;
+        string node_identifier = 2;
+        string task_identifier = 3;
+        string service_identifier = 4;
+        string ip_address = 5;
+        int32 address_family = 6;
+    }
+}

@@ -137,6 +137,18 @@ func (sar *SQLApplicationRepository) AddContainers(orders []*ContainerOrder) err
 	return tx.Commit().Error
 }
 
+func (sar *SQLApplicationRepository) FetchContainer(identifier string) (*ContainerDetails, error) {
+	details := &ContainerDetails{}
+	sql := "SELECT n.address AS node_address, c.container_identifier FROM container_tb " +
+		"INNER JOIN node_tb AS n ON c.node_id = n.id " +
+		"WHERE c.identifier = ?"
+	connection := sar.dataSource.Connection()
+	if err := connection.Raw(sql, identifier).First(details).Error; err != nil {
+		return nil, err
+	}
+	return details, nil
+}
+
 func (sar *SQLApplicationRepository) RemoveContainer(Identifier string) error {
 	sql := "DELETE FROM container_tb WHERE identifier = ?"
 	tx := sar.dataSource.Connection().Begin()
