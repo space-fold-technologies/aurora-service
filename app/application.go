@@ -72,8 +72,10 @@ func (sr *ServiceResources) Initialize() {
 func (sr *ServiceResources) providers(name string) providers.Provider {
 	if name == "DOCKER-SWARM" {
 		return docker.NewProvider(sr.pluginRegistry, sr.agent, docker.DockerServiceConfigurations{
-			NetworkName:   sr.parameters.NetworkName,
-			NetworkPrefix: sr.parameters.NetworkPrefix,
+			NetworkName:        sr.parameters.NetworkName,
+			NetworkPrefix:      sr.parameters.NetworkPrefix,
+			ListenerAddress:    sr.parameters.DefaultClusterListenAddress,
+			AdvertisingAddress: sr.parameters.DefaultClusterAdvertiseAddress,
 		})
 	}
 	return nil
