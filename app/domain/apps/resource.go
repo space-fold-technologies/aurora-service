@@ -3,6 +3,7 @@ package apps
 import (
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
@@ -12,6 +13,11 @@ import (
 )
 
 const BASE_PATH = "/api/v1/aurora-service/apps"
+
+var (
+	pongWait     = 60 * time.Second
+	pingInterval = 20 * time.Second
+)
 
 type AppController struct {
 	*controllers.ControllerBase
@@ -172,21 +178,28 @@ func (ac *AppController) update(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// func (ac *AppController) logContainer(w http.ResponseWriter, r *http.Request) {
-// 	//Requires a web socket connetion
-// 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
-// 		ac.ServiceFailure(w, err)
-// 	} else if err := ac.service.LogContainer(ws, Parse(r)); err != nil {
-// 		ac.ServiceFailure(w, err)
-// 	}
-// }
-
 func (ac *AppController) log(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Log(ws, ParseLogProperties(r)); err != nil {
-		ac.ServiceFailure(w, err)
+	} else {
+		quit := make(chan struct{})
+		defer ac.WebSocketClose(ws)
+		defer close(quit)
+		go func() {
+
+			for {
+				select {
+				case <-quit:
+					return
+				case <-time.After(pingInterval):
+				}
+				ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(2*time.Second))
+			}
+		}()
+		if err := ac.service.Log(ac.setup(ws), ParseLogProperties(r)); err != nil {
+			ac.WebsocketFailure(ws, err)
+		}
 	}
 }
 
@@ -194,8 +207,11 @@ func (ac *AppController) shell(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Shell(ws, ParseShellProperties(r)); err != nil {
-		ac.ServiceFailure(w, err)
+	} else {
+
+		if err := ac.service.Shell(ac.setup(ws), ParseShellProperties(r)); err != nil {
+			ac.WebsocketFailure(ws, err)
+		}
 	}
 }
 
@@ -212,7 +228,35 @@ func (ac *AppController) rollback(w http.ResponseWriter, r *http.Request) {
 	//Requires a web socket connetion
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Rollback(ws, ParseRollbackProperties(r)); err != nil {
-		ac.ServiceFailure(w, err)
+	} else {
+		quit := make(chan struct{})
+		defer ac.WebSocketClose(ws)
+		defer close(quit)
+		go func() {
+
+			for {
+				select {
+				case <-quit:
+					return
+				case <-time.After(pingInterval):
+				}
+				ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(2*time.Second))
+			}
+		}()
+		if err := ac.service.Rollback(ac.setup(ws), ParseRollbackProperties(r)); err != nil {
+			ac.WebsocketFailure(ws, err)
+		}
 	}
+}
+
+func (ac *AppController) setup(ws *websocket.Conn) *websocket.Conn {
+	ws.SetReadDeadline(time.Now().Add(pongWait))
+	ws.SetPongHandler(func(appData string) error {
+		ws.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+	ws.SetCloseHandler(func(code int, text string) error {
+		return ws.Close()
+	})
+	return ws
 }

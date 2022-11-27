@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	"github.com/space-fold-technologies/aurora-service/app/core/logging"
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
 	"google.golang.org/protobuf/proto"
@@ -88,6 +89,22 @@ func (a *ControllerBase) BadRequest(w http.ResponseWriter, Err error) int {
 func (a *ControllerBase) ServiceFailure(w http.ResponseWriter, Err error) int {
 	payload := &ErrorMessage{Error: "Service Expectation Failure", Detail: Err.Error(), Code: http.StatusExpectationFailed, OccurredAt: time.Now().Format(time.RFC3339)}
 	return a.Respond(w, payload, http.StatusExpectationFailed)
+}
+
+func (a *ControllerBase) WebsocketFailure(ws *websocket.Conn, err error) error {
+	payload := &ErrorMessage{Error: "Service Expectation Failure", Detail: err.Error(), Code: http.StatusExpectationFailed, OccurredAt: time.Now().Format(time.RFC3339)}
+	if data, err := json.Marshal(payload); err != nil {
+		return err
+	} else {
+		ws.WriteMessage(websocket.TextMessage, data)
+		ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		return ws.Close()
+	}
+}
+
+func (a *ControllerBase) WebSocketClose(ws *websocket.Conn) error {
+	ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Closing off"))
+	return ws.Close()
 }
 
 func (a *ControllerBase) Created(w http.ResponseWriter, Msg string) int {
