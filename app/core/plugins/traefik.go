@@ -15,8 +15,8 @@ const (
 )
 
 var (
-	TRAEFIK_CONFIGURATION_PATH = "/etc/traefik"
-	LETS_ENCRYPT_PATH          = "/etc/traefik/acme"
+	LOGS_PATH         = "/etc/traefik/logs"
+	LETS_ENCRYPT_PATH = "/etc/traefik/acme"
 )
 
 type TraefikPlugin struct {
@@ -133,13 +133,30 @@ func (tp *TraefikPlugin) commands() []string {
 			"--entrypoints.web.http.redirections.entrypoint.to=websecure",
 			"--entrypoints.web.http.redirections.entrypoint.scheme=https")
 	}
-	command = append(command, "--api.insecure=true", "--providers.docker", "--providers.docker.swarmmode")
+	command = append(command,
+		"--api.insecure=true",
+		"--providers.docker.swarmMode=true",
+		"--providers.docker.swarmModeRefreshSeconds=10",
+		"--providers.docker.httpClientTimeout=300",
+		fmt.Sprintf("--providers.docker.network=%s", tp.network),
+		"--accesslog=true",
+		"--log.filePath=/var/logs/traefik.log",
+		"--accesslog.filepath=/var/logs/access.log")
+	command = append(command,
+		"--metrics.prometheus=true",
+		"--metrics.prometheus.addEntryPointsLabels=true",
+		"--metrics.prometheus.addrouterslabels=true",
+		"--metrics.prometheus.addServicesLabels=true",
+		"--entryPoints.metrics.address=:8082",
+		"--metrics.prometheus.entryPoint=metrics")
+	command = append(command, "")
 	return command
 }
 
 func (tp *TraefikPlugin) mounts() map[string]string {
 	volumes := make(map[string]string)
 	volumes["/var/run/docker.sock"] = "/var/run/docker.sock"
+	volumes[LOGS_PATH] = "/var/logs"
 	if tp.https {
 		volumes[LETS_ENCRYPT_PATH] = "/letsencrypt"
 	}

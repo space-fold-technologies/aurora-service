@@ -7,3 +7,4 @@ mv ./app/core/server/content.go ./app/core/server/resources.go
 
 go build -o aurora-service
 tar -cvf aurora-service.tar.gz aurora-service
+rm aurora-service

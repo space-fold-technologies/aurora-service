@@ -105,7 +105,7 @@ func (so *SwarmOperator) HasWorkers(ctx context.Context) bool {
 }
 
 func (so *SwarmOperator) IsLocalNode(host string) bool {
-	return host == so.configuration.ListenerAddress
+	return host == so.configuration.AdvertisingAddress
 }
 
 func (so *SwarmOperator) LocalContainers(ctx context.Context, serviceID string, progress func(lines []byte)) ([]*ContainerDetails, error) {
@@ -415,9 +415,6 @@ func (so *SwarmOperator) portMapper(ctx context.Context, portSet nat.PortSet) ([
 		ports := make([]swarm.PortConfig, 0)
 		for port := range portSet {
 			publishPort := port.Int()
-			if publishPort == 80 || publishPort == 8080 {
-				publishPort = int(existing[0]) + 1
-			}
 			ports = append(ports, swarm.PortConfig{TargetPort: uint32(port.Int()), PublishedPort: uint32(publishPort), Protocol: swarm.PortConfigProtocol(port.Proto())})
 		}
 		return ports, nil
@@ -600,6 +597,7 @@ func (so *SwarmOperator) prepare(ctx context.Context, registry plugins.PluginReg
 	commands := make([]string, 0)
 	ports := make([]swarm.PortConfig, 0)
 	mounts := make([]mount.Mount, 0)
+	labels["com.docker.stack.namespace"] = so.configuration.NetworkPrefix
 	for _, volume := range order.Volumes {
 		mounts = append(mounts, mount.Mount{Source: volume.Source, Target: volume.Target, Type: mount.TypeBind})
 	}
@@ -619,7 +617,7 @@ func (so *SwarmOperator) prepare(ctx context.Context, registry plugins.PluginReg
 		if err := registry.Invoke(plugins.REVERSE_PROXY, func(p plugins.Plugin) error {
 			return p.Call(
 				plugins.REVERSE_PROXY_REGISTRATION,
-				&plugins.ProxyRequest{Hostname: order.Hostname(), Port: uint(ports[0].PublishedPort)},
+				&plugins.ProxyRequest{Hostname: order.Hostname(), Port: uint(ports[0].TargetPort)},
 				&plugins.ProxyResponse{Labels: labels})
 		}); err != nil {
 			return fmt.Errorf("plugin registration for [%s] failed: %s", plugins.REVERSE_PROXY_REGISTRATION, err.Error())
@@ -629,7 +627,8 @@ func (so *SwarmOperator) prepare(ctx context.Context, registry plugins.PluginReg
 			Name:   order.Name,
 		}
 		spec.Mode = swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: func(v uint64) *uint64 { return &v }(uint64(order.Scale))}}
-		spec.EndpointSpec = &swarm.EndpointSpec{Ports: ports}
+		//spec.EndpointSpec = &swarm.EndpointSpec{Ports: ports} //
+		spec.EndpointSpec = &swarm.EndpointSpec{Mode: swarm.ResolutionModeVIP}
 		spec.TaskTemplate = swarm.TaskSpec{
 			ContainerSpec: &swarm.ContainerSpec{
 				Hostname: order.Hostname(),
@@ -654,7 +653,7 @@ func (so *SwarmOperator) prepare(ctx context.Context, registry plugins.PluginReg
 
 func (so *SwarmOperator) serviceTasks(ctx context.Context, serviceId string, retries *int) ([]swarm.Task, error) {
 	filter := filters.NewArgs()
-	filter.Add("label", fmt.Sprintf("com.docker.stack.namespace="))
+	filter.Add("label", fmt.Sprintf("com.docker.stack.namespace=%s", so.configuration.NetworkPrefix))
 	results := make([]swarm.Task, 0)
 	if tasks, err := so.dkr.TaskList(ctx, types.TaskListOptions{Filters: filter}); err != nil {
 		return []swarm.Task{}, err
@@ -803,7 +802,8 @@ func (so *SwarmOperator) commandsForExec(cmd string) []string {
 
 func (so *SwarmOperator) remoteClient(workerIP string) (*client.Client, error) {
 	options := make([]client.Opt, 0)
-	options = append(options, client.WithHost(fmt.Sprintf("http://%s:2375", workerIP)))
+	options = append(options, client.WithTimeout(5*time.Second))
+	options = append(options, client.WithHost(fmt.Sprintf("tcp://%s:2375", workerIP)))
 	options = append(options, client.WithAPIVersionNegotiation())
 	return client.NewClientWithOpts(options...)
 }
