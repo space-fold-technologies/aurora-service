@@ -13,19 +13,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// type reporter struct {
-// 	ws *websocket.Conn
-// 	as *AppService
-// }
-
-// func (r *reporter) Done(report providers.Report) error {
-// 	return r.as.processReport(ctx, properties.Identifier, properties.Name, report)
-// }
-
-// func (r *reporter) Progress(line []byte) {
-// 	r.ws.WriteMessage(websocket.TextMessage, line)
-// }
-
 type AppService struct {
 	repository ApplicationRepository
 	hasher     security.HashHandler
