@@ -106,7 +106,7 @@ func (tp *TraefikPlugin) register(order *ProxyRequest, result *ProxyResponse) er
 	// pack in the required traefik labels
 	target["traefik.enable"] = "true"
 	target["traefik.docker.network"] = tp.network
-	target["traefik.http.services."+order.Hostname+".entrypoints"] = "web"
+	target["traefik.http.routers."+order.Hostname+".entrypoints"] = "web"
 	target["traefik.http.services."+order.Hostname+".loadbalancer.server.port"] = fmt.Sprint(order.Port)
 	rule := "traefik.http.routers." + order.Hostname + ".rule"
 	target[rule] = fmt.Sprintf("Host(`%s`)", host)
