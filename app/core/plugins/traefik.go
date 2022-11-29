@@ -106,8 +106,8 @@ func (tp *TraefikPlugin) register(order *ProxyRequest, result *ProxyResponse) er
 	// pack in the required traefik labels
 	target["traefik.enable"] = "true"
 	target["traefik.docker.network"] = tp.network
+	target["traefik.http.services."+order.Hostname+".entrypoints"] = "web"
 	target["traefik.http.services."+order.Hostname+".loadbalancer.server.port"] = fmt.Sprint(order.Port)
-	target["traefik.port"] = fmt.Sprint(order.Port)
 	rule := "traefik.http.routers." + order.Hostname + ".rule"
 	target[rule] = fmt.Sprintf("Host(`%s`)", host)
 	if tp.https {
@@ -135,13 +135,13 @@ func (tp *TraefikPlugin) commands() []string {
 	}
 	command = append(command,
 		"--api.insecure=true",
+		"--providers.docker.endpoint=unix:///var/run/docker.sock",
 		"--providers.docker.swarmMode=true",
 		"--providers.docker.swarmModeRefreshSeconds=10",
 		"--providers.docker.httpClientTimeout=300",
+		"--providers.docker.exposedbydefault=false",
 		fmt.Sprintf("--providers.docker.network=%s", tp.network),
-		"--accesslog=true",
-		"--log.filePath=/var/logs/traefik.log",
-		"--accesslog.filepath=/var/logs/access.log")
+		"--accesslog=true")
 	command = append(command,
 		"--metrics.prometheus=true",
 		"--metrics.prometheus.addEntryPointsLabels=true",
@@ -149,7 +149,6 @@ func (tp *TraefikPlugin) commands() []string {
 		"--metrics.prometheus.addServicesLabels=true",
 		"--entryPoints.metrics.address=:8082",
 		"--metrics.prometheus.entryPoint=metrics")
-	command = append(command, "")
 	return command
 }
 
