@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/database"
+	"gorm.io/gorm"
 )
 
 type SQLApplicationRepository struct {
@@ -216,4 +217,16 @@ func (sar *SQLApplicationRepository) FetchDeployment(identifier string) (*Deploy
 		return nil, err
 	}
 	return summary, nil
+}
+
+func (sar *SQLApplicationRepository) FetchActiveDeployments() ([]*ServiceCheck, error) {
+	connection := sar.dataSource.Connection()
+	checks := make([]*ServiceCheck, 0)
+	sql := "SELECT d.service_identifier FROM deployment_tb AS d " +
+		"INNER JOIN application_tb AS a ON d.application_id = a.id " +
+		"WHERE d.status = ? AND d.completed_at = a.last_deployment"
+	if err := connection.Raw(sql, "DEPLOYED").Find(&checks).Error; err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+	return checks, nil
 }

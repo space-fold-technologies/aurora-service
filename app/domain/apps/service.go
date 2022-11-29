@@ -231,6 +231,23 @@ func (as *AppService) Rollback(ws *websocket.Conn, properties *RollbackPropertie
 	}
 }
 
+func (as *AppService) UpdateContainers() {
+	logger := logging.GetInstance()
+	if checks, err := as.repository.FetchActiveDeployments(); err != nil {
+		logger.Errorf("checks failure : %s", err.Error())
+	} else {
+		identifiers := make([]string, 0)
+		for _, check := range checks {
+			identifiers = append(identifiers, check.ID)
+		}
+		if err := as.provider.FetchContainers(identifiers, func(state map[string][]*providers.Instance) {
+
+		}); err != nil {
+			logger.Errorf("checks failure : %s", err.Error())
+		}
+	}
+}
+
 func (as *AppService) processReport(identifier, name string, report *providers.Report) error {
 	completedAt := time.Now().UTC()
 	if err := as.repository.UpdateDeploymentEntry(&DeploymentUpdate{

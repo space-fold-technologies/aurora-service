@@ -36,7 +36,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0-rc2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/stretchr/testify v1.8.0 // indirect
+	github.com/stretchr/testify v1.8.1 // indirect
 )
 
 require (
@@ -53,7 +53,9 @@ require (
 	github.com/go-bindata/go-bindata v3.1.2+incompatible // indirect
 	github.com/gojek/valkyrie v0.0.0-20180215180059-6aee720afcdf // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/stretchr/objx v0.4.0 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
+	github.com/stretchr/objx v0.5.0 // indirect
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/text v0.3.8 // indirect
 )
 
@@ -73,6 +75,7 @@ require (
 require (
 	github.com/deckarep/golang-set/v2 v2.1.0
 	github.com/docker/docker v20.10.18+incompatible
+	github.com/go-co-op/gocron v1.18.0
 	github.com/gojek/heimdall/v7 v7.0.2
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/uuid v1.3.0

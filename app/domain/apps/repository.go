@@ -17,4 +17,5 @@ type ApplicationRepository interface {
 	RemoveContainers(applicationId string) error
 	Deployments(name string) ([]*DeploymentDetails, error)
 	FetchDeployment(identifier string) (*DeploymentSummary, error)
+	FetchActiveDeployments() ([]*ServiceCheck, error)
 }

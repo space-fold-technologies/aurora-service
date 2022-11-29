@@ -110,13 +110,6 @@ type Report struct {
 	ImageDigest string
 	Instances   map[string]*Instance
 }
-
-type CurrentState struct {
-	Status    string
-	Message   string
-	Instances map[string]*Instance
-}
-
 type JoinOrder struct {
 	Name           string
 	WorkerAddress  string

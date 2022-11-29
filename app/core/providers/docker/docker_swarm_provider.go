@@ -76,4 +76,9 @@ func (dsp *DockerSwarmProvider) DeployDependency(order *providers.DependencyOrde
 	return dsp.operator.DeployInternalDependency(ctx, order)
 }
 
+func (dsp *DockerSwarmProvider) FetchContainers(identifiers []string, status providers.ContainersCallback) error {
+	//TODO: Implement call to update container state
+	return nil
+}
+
 // internals
