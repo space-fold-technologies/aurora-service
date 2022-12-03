@@ -365,7 +365,6 @@ func (so *SwarmOperator) DeployInternalDependency(ctx context.Context, order *pr
 }
 
 func (so *SwarmOperator) FetchContainers(ctx context.Context, identifiers []string, status providers.ContainersCallback) error {
-	//TODO: Implement call to update container state
 	logger := logging.GetInstance()
 	state := make(map[string][]*providers.Instance)
 	for _, identifier := range identifiers {
@@ -385,6 +384,7 @@ func (so *SwarmOperator) FetchContainers(ctx context.Context, identifiers []stri
 			}
 		}
 	}
+	status(state)
 	return nil
 }
 
