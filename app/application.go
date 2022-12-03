@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-co-op/gocron"
 	"github.com/space-fold-technologies/aurora-service/app/core/configuration"
 	"github.com/space-fold-technologies/aurora-service/app/core/database"
 	"github.com/space-fold-technologies/aurora-service/app/core/plugins"
@@ -34,6 +35,8 @@ type ServiceResources struct {
 	provider        providers.Provider
 	sessionDuration time.Duration
 	agent           providers.AgentClient
+	scheduler       *gocron.Scheduler
+	appservice      *apps.AppService
 }
 
 func ProduceServiceResources(
@@ -66,7 +69,11 @@ func (sr *ServiceResources) Initialize() {
 			sr.parameters.CertResolverEmail,
 			sr.provider))
 	}
+	sr.appservice = apps.NewService(sr.provider, sr.hasher, apps.NewRepository(sr.dataSource))
 	sr.setupControllers(sr.server.GetRegistry())
+	sr.scheduler = gocron.NewScheduler(time.UTC)
+	sr.scheduler.Every(5).Do(sr.appservice.UpdateContainers)
+	sr.scheduler.StartAsync()
 }
 
 func (sr *ServiceResources) providers(name string) providers.Provider {
@@ -91,7 +98,7 @@ func (sr *ServiceResources) createDataSource() database.DataSource {
 
 func (sr *ServiceResources) setupControllers(registry *controllers.HTTPControllerRegistry) {
 	//TODO: Register all repositories and inject inject into services and controllers
-	registry.AddController(apps.NewController(apps.NewService(sr.provider, sr.hasher, apps.NewRepository(sr.dataSource))))
+	registry.AddController(apps.NewController(sr.appservice))
 	registry.AddController(clusters.NewController(clusters.NewService(sr.provider, clusters.NewRepository(sr.dataSource))))
 	registry.AddController(environments.NewController(environments.NewService(environments.NewRepository(sr.dataSource))))
 	registry.AddController(nodes.NewController(nodes.NewService(sr.provider, nodes.NewRepository(sr.dataSource))))
@@ -112,4 +119,8 @@ func (sr *ServiceResources) hasPlugin(name string) bool {
 		}
 	}
 	return false
+}
+
+func (sr *ServiceResources) OnShutDown() {
+	sr.scheduler.Stop()
 }

@@ -76,4 +76,10 @@ func (dsp *DockerSwarmProvider) DeployDependency(order *providers.DependencyOrde
 	return dsp.operator.DeployInternalDependency(ctx, order)
 }
 
+func (dsp *DockerSwarmProvider) FetchContainers(identifiers []string, status providers.ContainersCallback) error {
+	ctx := context.Background()
+	defer ctx.Done()
+	return dsp.operator.FetchContainers(ctx, identifiers, status)
+}
+
 // internals

@@ -1,5 +1,7 @@
 package apps
 
+import "time"
+
 type ApplicationRepository interface {
 	Create(entry *ApplicationEntry) error
 	Update(Name, Description string, Scale int32) error
@@ -17,4 +19,6 @@ type ApplicationRepository interface {
 	RemoveContainers(applicationId string) error
 	Deployments(name string) ([]*DeploymentDetails, error)
 	FetchDeployment(identifier string) (*DeploymentSummary, error)
+	FetchActiveDeployments() ([]*ServiceCheck, error)
+	RemoveContainersOlderThan(targetTime *time.Time) error
 }

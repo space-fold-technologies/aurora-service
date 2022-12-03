@@ -68,6 +68,7 @@ CREATE TABLE container_tb(
    address_family INTEGER NOT NULL,
    application_id INTEGER NOT NULL,
    node_id INTEGER NOT NULL,
+   last_updated_at TIMESTAMP,
    FOREIGN KEY(application_id) REFERENCES application_tb(id) ON DELETE CASCADE,
    FOREIGN KEY(node_id) REFERENCES node_tb(id) ON DELETE CASCADE
 );

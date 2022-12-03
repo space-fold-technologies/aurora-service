@@ -15,8 +15,8 @@ const (
 )
 
 var (
-	TRAEFIK_CONFIGURATION_PATH = "/etc/traefik"
-	LETS_ENCRYPT_PATH          = "/etc/traefik/acme"
+	LOGS_PATH         = "/etc/traefik/logs"
+	LETS_ENCRYPT_PATH = "/etc/traefik/acme"
 )
 
 type TraefikPlugin struct {
@@ -106,8 +106,8 @@ func (tp *TraefikPlugin) register(order *ProxyRequest, result *ProxyResponse) er
 	// pack in the required traefik labels
 	target["traefik.enable"] = "true"
 	target["traefik.docker.network"] = tp.network
+	target["traefik.http.routers."+order.Hostname+".entrypoints"] = "web"
 	target["traefik.http.services."+order.Hostname+".loadbalancer.server.port"] = fmt.Sprint(order.Port)
-	target["traefik.port"] = fmt.Sprint(order.Port)
 	rule := "traefik.http.routers." + order.Hostname + ".rule"
 	target[rule] = fmt.Sprintf("Host(`%s`)", host)
 	if tp.https {
@@ -133,13 +133,29 @@ func (tp *TraefikPlugin) commands() []string {
 			"--entrypoints.web.http.redirections.entrypoint.to=websecure",
 			"--entrypoints.web.http.redirections.entrypoint.scheme=https")
 	}
-	command = append(command, "--api.insecure=true", "--providers.docker", "--providers.docker.swarmmode")
+	command = append(command,
+		"--api.insecure=true",
+		"--providers.docker.endpoint=unix:///var/run/docker.sock",
+		"--providers.docker.swarmMode=true",
+		"--providers.docker.swarmModeRefreshSeconds=10",
+		"--providers.docker.httpClientTimeout=300",
+		"--providers.docker.exposedbydefault=false",
+		fmt.Sprintf("--providers.docker.network=%s", tp.network),
+		"--accesslog=true")
+	command = append(command,
+		"--metrics.prometheus=true",
+		"--metrics.prometheus.addEntryPointsLabels=true",
+		"--metrics.prometheus.addrouterslabels=true",
+		"--metrics.prometheus.addServicesLabels=true",
+		"--entryPoints.metrics.address=:8082",
+		"--metrics.prometheus.entryPoint=metrics")
 	return command
 }
 
 func (tp *TraefikPlugin) mounts() map[string]string {
 	volumes := make(map[string]string)
 	volumes["/var/run/docker.sock"] = "/var/run/docker.sock"
+	volumes[LOGS_PATH] = "/var/logs"
 	if tp.https {
 		volumes[LETS_ENCRYPT_PATH] = "/letsencrypt"
 	}

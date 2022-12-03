@@ -126,8 +126,24 @@ func (ac *AppController) create(w http.ResponseWriter, r *http.Request) {
 func (ac *AppController) deploy(w http.ResponseWriter, r *http.Request) {
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
-	} else if err := ac.service.Deploy(ws, ParseDeploymentProperties(r)); err != nil {
-		ac.ServiceFailure(w, err)
+	} else {
+		quit := make(chan struct{})
+		defer ac.WebSocketClose(ws)
+		defer close(quit)
+		go func() {
+
+			for {
+				select {
+				case <-quit:
+					return
+				case <-time.After(pingInterval):
+				}
+				ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(2*time.Second))
+			}
+		}()
+		if err := ac.service.Deploy(ws, ParseDeploymentProperties(r)); err != nil {
+			ac.ServiceFailure(w, err)
+		}
 	}
 }
 
@@ -208,7 +224,20 @@ func (ac *AppController) shell(w http.ResponseWriter, r *http.Request) {
 	if ws, err := ac.upgrader.Upgrade(w, r, nil); err != nil {
 		ac.ServiceFailure(w, err)
 	} else {
+		quit := make(chan struct{})
+		defer ac.WebSocketClose(ws)
+		defer close(quit)
+		go func() {
 
+			for {
+				select {
+				case <-quit:
+					return
+				case <-time.After(pingInterval):
+				}
+				ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(2*time.Second))
+			}
+		}()
 		if err := ac.service.Shell(ac.setup(ws), ParseShellProperties(r)); err != nil {
 			ac.WebsocketFailure(ws, err)
 		}

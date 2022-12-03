@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -69,10 +70,9 @@ type ServiceSpecOrder struct {
 type ImageProgressCallback func(line []byte)
 
 type SwarmOperator struct {
-	dkr            *client.Client
-	pluginRegsitry plugins.PluginRegistry
-	agent          providers.AgentClient
-	configuration  DockerServiceConfigurations
+	dkr           *client.Client
+	agent         providers.AgentClient
+	configuration DockerServiceConfigurations
 }
 
 func NewSwarmOperator(agent providers.AgentClient, configuration DockerServiceConfigurations) *SwarmOperator {
@@ -105,7 +105,7 @@ func (so *SwarmOperator) HasWorkers(ctx context.Context) bool {
 }
 
 func (so *SwarmOperator) IsLocalNode(host string) bool {
-	return host == so.configuration.ListenerAddress
+	return host == so.configuration.AdvertisingAddress
 }
 
 func (so *SwarmOperator) LocalContainers(ctx context.Context, serviceID string, progress func(lines []byte)) ([]*ContainerDetails, error) {
@@ -129,14 +129,14 @@ func (so *SwarmOperator) LocalContainers(ctx context.Context, serviceID string, 
 	}
 }
 
-func (so *SwarmOperator) RemoteContainers(ctx context.Context, serviceID, token string, progress func(lines []byte)) ([]*ContainerDetails, error) {
+func (so *SwarmOperator) RemoteContainers(ctx context.Context, serviceID string, progress func(lines []byte)) ([]*ContainerDetails, error) {
 	retries := 0
 	details := make([]*ContainerDetails, 0)
 	if tasks, err := so.serviceTasks(ctx, serviceID, &retries); err != nil {
 		for _, task := range tasks {
 			if node, _, err := so.dkr.NodeInspectWithRaw(ctx, task.NodeID); err != nil {
 				return nil, err
-			} else if report, err := so.agent.Containers(ctx, serviceID, node.Status.Addr, token); err != nil {
+			} else if report, err := so.agent.Containers(ctx, serviceID, node.Status.Addr); err != nil {
 				return nil, err
 			} else {
 				for _, container := range report.GetContainers() {
@@ -204,7 +204,7 @@ func (so *SwarmOperator) DeployToWorker(ctx context.Context, registry plugins.Pl
 		return err
 	} else if resp, err := so.dkr.ServiceCreate(ctx, spec, types.ServiceCreateOptions{}); err != nil {
 		return err
-	} else if containers, err := so.RemoteContainers(ctx, resp.ID, order.Token, func(lines []byte) { reporter.Progress(lines) }); err != nil {
+	} else if containers, err := so.RemoteContainers(ctx, resp.ID, func(lines []byte) { reporter.Progress(lines) }); err != nil {
 		return err
 	} else {
 		report := providers.Report{
@@ -277,30 +277,20 @@ func (so *SwarmOperator) ForwardServiceLogs(ctx context.Context, ws *websocket.C
 	}
 }
 
-func (so *SwarmOperator) InitializeManager(ctx context.Context, listenAddr, avertiseAddr string) (string, error) {
-	return so.dkr.SwarmInit(ctx, swarm.InitRequest{
-		ListenAddr:      listenAddr,
-		AdvertiseAddr:   avertiseAddr,
-		DataPathAddr:    avertiseAddr,
-		DataPathPort:    0,
-		ForceNewCluster: false,
-		Spec: swarm.Spec{Orchestration: swarm.OrchestrationConfig{TaskHistoryRetentionLimit: func(n int64) *int64 { return &n }(5)},
-			Raft: swarm.RaftConfig{
-				SnapshotInterval: 10000,
-				KeepOldSnapshots: func(n uint64) *uint64 { return &n }(0),
-			},
-			Dispatcher: swarm.DispatcherConfig{
-				HeartbeatPeriod: 5 * time.Second,
-			},
-			EncryptionConfig: swarm.EncryptionConfig{
-				AutoLockManagers: false,
-			},
-			CAConfig: swarm.CAConfig{NodeCertExpiry: 90 * 24 * time.Hour}},
-		AutoLockManagers: false,
-		Availability:     swarm.NodeAvailabilityActive,
-		DefaultAddrPool:  []string{"10.0.0.0/8"},
-		SubnetSize:       24,
-	})
+func (so *SwarmOperator) InitializeManager(ctx context.Context, listenAddr, advertiseAddr string) (string, error) {
+	cmd := fmt.Sprintf("docker swarm init --advertise-addr=%s --listen-addr=%s", advertiseAddr, listenAddr)
+	if _, err := exec.Command(cmd).Output(); err != nil {
+		return "", err
+	} else if details, err := so.dkr.SwarmInspect(ctx); err != nil {
+		return "", err
+	} else {
+		return details.ID, nil
+	}
+
+	// TODO: This generates a faulty swarm, the reason why is still not know but, will be uncovered
+	// Looking into programmatically creating swarms and joining nodes will be done over the CLI as exec commands as
+	//
+	//return so.initialize(ctx, advertiseAddr, listenAddr)
 }
 
 func (so *SwarmOperator) ParentNode(ctx context.Context) (*providers.ManagerDetails, error) {
@@ -374,6 +364,70 @@ func (so *SwarmOperator) DeployInternalDependency(ctx context.Context, order *pr
 	}
 }
 
+func (so *SwarmOperator) FetchContainers(ctx context.Context, identifiers []string, status providers.ContainersCallback) error {
+	logger := logging.GetInstance()
+	state := make(map[string][]*providers.Instance)
+	for _, identifier := range identifiers {
+		if service, _, err := so.dkr.ServiceInspectWithRaw(ctx, identifier, types.ServiceInspectOptions{}); err != nil {
+			return err
+		} else if service.Spec.TaskTemplate.Placement.Constraints[0] == "node.role==worker" {
+			if containers, err := so.RemoteContainers(ctx, service.ID, func(lines []byte) { logger.Infof("%s", string(lines)) }); err != nil {
+				return err
+			} else {
+				so.packInstanceDetails(service.ID, state, containers)
+			}
+		} else {
+			if containers, err := so.LocalContainers(ctx, service.ID, func(lines []byte) { logger.Infof("%s", string(lines)) }); err != nil {
+				return err
+			} else {
+				so.packInstanceDetails(service.ID, state, containers)
+			}
+		}
+	}
+	status(state)
+	return nil
+}
+
+func (so *SwarmOperator) packInstanceDetails(serviceID string, state map[string][]*providers.Instance, containers []*ContainerDetails) {
+	state[serviceID] = make([]*providers.Instance, 0)
+	for _, container := range containers {
+		state[serviceID] = append(state[serviceID], &providers.Instance{
+			ID:        container.ID,
+			Node:      container.NodeID,
+			TaskID:    container.TaskID,
+			IP:        container.IPAddress,
+			Family:    container.AddressFamily,
+			ServiceID: serviceID,
+		})
+	}
+}
+
+/*
+func (so *SwarmOperator) initialize(ctx context.Context, advertiseAddr, listenAddr string) (string, error) {
+	return so.dkr.SwarmInit(ctx, swarm.InitRequest{
+		ListenAddr:      listenAddr,
+		AdvertiseAddr:   advertiseAddr,
+		ForceNewCluster: false,
+		Spec: swarm.Spec{Orchestration: swarm.OrchestrationConfig{TaskHistoryRetentionLimit: func(n int64) *int64 { return &n }(5)},
+			Raft: swarm.RaftConfig{
+				SnapshotInterval: 10000,
+				KeepOldSnapshots: func(n uint64) *uint64 { return &n }(0),
+			},
+			Dispatcher: swarm.DispatcherConfig{
+				HeartbeatPeriod: 5 * time.Second,
+			},
+			EncryptionConfig: swarm.EncryptionConfig{
+				AutoLockManagers: false,
+			},
+			CAConfig: swarm.CAConfig{NodeCertExpiry: 90 * 24 * time.Hour}},
+		AutoLockManagers: false,
+		Availability:     swarm.NodeAvailabilityActive,
+		DefaultAddrPool:  []string{"10.0.0.0/8"},
+		SubnetSize:       24,
+	})
+}
+*/
+
 // utilities
 func (so *SwarmOperator) networks(ctx context.Context) []swarm.NetworkAttachmentConfig {
 	networks := make([]swarm.NetworkAttachmentConfig, 0)
@@ -414,11 +468,7 @@ func (so *SwarmOperator) portMapper(ctx context.Context, portSet nat.PortSet) ([
 		}
 		ports := make([]swarm.PortConfig, 0)
 		for port := range portSet {
-			publishPort := port.Int()
-			if publishPort == 80 || publishPort == 8080 {
-				publishPort = int(existing[0]) + 1
-			}
-			ports = append(ports, swarm.PortConfig{TargetPort: uint32(port.Int()), PublishedPort: uint32(publishPort), Protocol: swarm.PortConfigProtocol(port.Proto())})
+			ports = append(ports, swarm.PortConfig{TargetPort: uint32(port.Int()), Protocol: swarm.PortConfigProtocol(port.Proto())})
 		}
 		return ports, nil
 	}
@@ -471,7 +521,7 @@ func (so *SwarmOperator) internalDependencySpec(order *InternalSpecOrder) swarm.
 		},
 		TaskTemplate: swarm.TaskSpec{
 			Placement: &swarm.Placement{
-				Constraints: []string{"node.role == manager"},
+				Constraints: []string{"node.role==manager"},
 				MaxReplicas: 1,
 			},
 			ContainerSpec: &swarm.ContainerSpec{
@@ -482,7 +532,7 @@ func (so *SwarmOperator) internalDependencySpec(order *InternalSpecOrder) swarm.
 				Mounts:   order.Mounts,
 				TTY:      true,
 				Labels:   map[string]string{},
-				Hosts:    []string{"host.docker.internal:host-gateway"}, //<< Some nonsese like this //"host.docker.internal"
+				Hosts:    []string{}, //<< Some nonsese like this //"host.docker.internal"
 			},
 			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
 			Networks:      order.Networks,
@@ -600,6 +650,7 @@ func (so *SwarmOperator) prepare(ctx context.Context, registry plugins.PluginReg
 	commands := make([]string, 0)
 	ports := make([]swarm.PortConfig, 0)
 	mounts := make([]mount.Mount, 0)
+	labels["com.docker.stack.namespace"] = so.configuration.NetworkPrefix
 	for _, volume := range order.Volumes {
 		mounts = append(mounts, mount.Mount{Source: volume.Source, Target: volume.Target, Type: mount.TypeBind})
 	}
@@ -619,7 +670,7 @@ func (so *SwarmOperator) prepare(ctx context.Context, registry plugins.PluginReg
 		if err := registry.Invoke(plugins.REVERSE_PROXY, func(p plugins.Plugin) error {
 			return p.Call(
 				plugins.REVERSE_PROXY_REGISTRATION,
-				&plugins.ProxyRequest{Hostname: order.Hostname(), Port: uint(ports[0].PublishedPort)},
+				&plugins.ProxyRequest{Hostname: order.Hostname(), Port: uint(ports[0].TargetPort)},
 				&plugins.ProxyResponse{Labels: labels})
 		}); err != nil {
 			return fmt.Errorf("plugin registration for [%s] failed: %s", plugins.REVERSE_PROXY_REGISTRATION, err.Error())
@@ -629,7 +680,8 @@ func (so *SwarmOperator) prepare(ctx context.Context, registry plugins.PluginReg
 			Name:   order.Name,
 		}
 		spec.Mode = swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: func(v uint64) *uint64 { return &v }(uint64(order.Scale))}}
-		spec.EndpointSpec = &swarm.EndpointSpec{Ports: ports}
+		//spec.EndpointSpec = &swarm.EndpointSpec{Ports: ports} //
+		spec.EndpointSpec = &swarm.EndpointSpec{Mode: swarm.ResolutionModeVIP}
 		spec.TaskTemplate = swarm.TaskSpec{
 			ContainerSpec: &swarm.ContainerSpec{
 				Hostname: order.Hostname(),
@@ -654,7 +706,7 @@ func (so *SwarmOperator) prepare(ctx context.Context, registry plugins.PluginReg
 
 func (so *SwarmOperator) serviceTasks(ctx context.Context, serviceId string, retries *int) ([]swarm.Task, error) {
 	filter := filters.NewArgs()
-	filter.Add("label", fmt.Sprintf("com.docker.stack.namespace="))
+	filter.Add("label", fmt.Sprintf("com.docker.stack.namespace=%s", so.configuration.NetworkPrefix))
 	results := make([]swarm.Task, 0)
 	if tasks, err := so.dkr.TaskList(ctx, types.TaskListOptions{Filters: filter}); err != nil {
 		return []swarm.Task{}, err
@@ -803,7 +855,8 @@ func (so *SwarmOperator) commandsForExec(cmd string) []string {
 
 func (so *SwarmOperator) remoteClient(workerIP string) (*client.Client, error) {
 	options := make([]client.Opt, 0)
-	options = append(options, client.WithHost(fmt.Sprintf("http://%s:2375", workerIP)))
+	options = append(options, client.WithTimeout(5*time.Second))
+	options = append(options, client.WithHost(fmt.Sprintf("tcp://%s:2375", workerIP)))
 	options = append(options, client.WithAPIVersionNegotiation())
 	return client.NewClientWithOpts(options...)
 }

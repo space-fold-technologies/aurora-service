@@ -105,12 +105,11 @@ func (as *AppService) Log(ws *websocket.Conn, properties *LogProperties) error {
 	if deployment, err := as.repository.Deployed(properties.Name); err != nil {
 		return err
 	} else {
-		logging.GetInstance().Infof("Service Id: %s For App : %s", deployment.ServiceID, properties.Name)
-		if err := as.provider.Log(ws, &providers.LogProperties{ServiceID: deployment.ServiceID}); err != nil {
-			return err
-		}
+		return as.provider.Log(ws, &providers.LogProperties{
+			ServiceID:      deployment.ServiceID,
+			Details:        properties.ShowDetails,
+			ShowTimestamps: properties.ShowTimeStamps})
 	}
-	return nil
 }
 
 func (as *AppService) Shell(ws *websocket.Conn, properties *ShellProperties) error {
@@ -119,7 +118,7 @@ func (as *AppService) Shell(ws *websocket.Conn, properties *ShellProperties) err
 		return err
 	} else {
 		logging.GetInstance().Infof("Shell Container: %s For App : %s", details.ID, properties.Name)
-		as.provider.Shell(ws, &providers.ShellProperties{
+		return as.provider.Shell(ws, &providers.ShellProperties{
 			ContainerID: details.ID,
 			Host:        details.NodeIP,
 			Width:       properties.Width,
@@ -127,7 +126,6 @@ func (as *AppService) Shell(ws *websocket.Conn, properties *ShellProperties) err
 			Terminal:    properties.Term,
 		})
 	}
-	return nil
 }
 
 func (as *AppService) Create(order *CreateAppOrder) error {
@@ -228,6 +226,42 @@ func (as *AppService) Rollback(ws *websocket.Conn, properties *RollbackPropertie
 				Volumes:              []providers.Mount{},
 				Scale:                uint(app.Scale),
 			}, &reporter)
+	}
+}
+
+func (as *AppService) UpdateContainers() {
+	logger := logging.GetInstance()
+	if checks, err := as.repository.FetchActiveDeployments(); err != nil {
+		logger.Errorf("checks failure : %s", err.Error())
+	} else {
+		identifiers := make([]string, 0)
+		for _, check := range checks {
+			identifiers = append(identifiers, check.ID)
+		}
+		if err := as.provider.FetchContainers(identifiers, func(state map[string][]*providers.Instance) {
+			for id, instances := range state {
+				logger.Infof("updating containers for service id[:%s]", id)
+				containers := make([]*ContainerOrder, 0)
+				for _, instance := range instances {
+					containers = append(containers, &ContainerOrder{
+						Identifier: instance.ID,
+						IP:         instance.IP,
+						Family:     instance.Family,
+						ServiceID:  instance.ServiceID,
+						Node:       instance.Node,
+					})
+				}
+				if err := as.repository.AddContainers(containers); err != nil {
+					logger.Errorf("failed to update containers: Err::[%s]", err.Error())
+				}
+			}
+		}); err != nil {
+			logger.Errorf("checks failure : %s", err.Error())
+		}
+		targetTime := time.Now().Add(-10 * time.Minute)
+		if err := as.repository.RemoveContainersOlderThan(&targetTime); err != nil {
+			logger.Errorf("failed to remove dead container details : %s", err.Error())
+		}
 	}
 }
 

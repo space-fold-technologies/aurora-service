@@ -77,3 +77,7 @@ type ContainerDetails struct {
 	ID     string `gorm:"column:container_identifier;type:varchar;not null"`
 	NodeIP string `gorm:"column:node_address;type:varchar;not null"`
 }
+
+type ServiceCheck struct {
+	ID string `gorm:"column:service_identifier;type:varchar;not null"`
+}
