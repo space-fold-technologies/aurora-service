@@ -77,8 +77,9 @@ func (dsp *DockerSwarmProvider) DeployDependency(order *providers.DependencyOrde
 }
 
 func (dsp *DockerSwarmProvider) FetchContainers(identifiers []string, status providers.ContainersCallback) error {
-	//TODO: Implement call to update container state
-	return nil
+	ctx := context.Background()
+	defer ctx.Done()
+	return dsp.operator.FetchContainers(ctx, identifiers, status)
 }
 
 // internals

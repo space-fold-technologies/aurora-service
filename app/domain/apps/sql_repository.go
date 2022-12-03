@@ -3,6 +3,7 @@ package apps
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/database"
 	"gorm.io/gorm"
@@ -116,12 +117,13 @@ func (sar *SQLApplicationRepository) FetchEnvVars(name string) ([]*EnvVarEntry, 
 	return vars, nil
 }
 func (sar *SQLApplicationRepository) AddContainers(orders []*ContainerOrder) error {
-	sql := `INSERT INTO container_tb(identifier, ip, address_family, application_id, node_id) VALUES %s`
+	sql := `INSERT OR REPLACE INTO container_tb(identifier, ip, address_family, application_id, node_id, last_updated_at) VALUES %s`
 	entries := []string{}
 	parameters := []interface{}{}
+	checkedAt := time.Now()
 	for _, order := range orders {
-		entries = append(entries, "(?, ?, ?, (SELECT application_id FROM deployment_tb WHERE service_identifier = ?), (SELECT id FROM node_tb WHERE identifier = ?))")
-		parameters = append(parameters, order.Identifier, order.IP, order.Family, order.ServiceID, order.Node)
+		entries = append(entries, "(?, ?, ?, (SELECT application_id FROM deployment_tb WHERE service_identifier = ?), (SELECT id FROM node_tb WHERE identifier = ?), ?)")
+		parameters = append(parameters, order.Identifier, order.IP, order.Family, order.ServiceID, order.Node, checkedAt)
 	}
 
 	sql = fmt.Sprintf(sql, strings.Join(entries, ","))
@@ -229,4 +231,14 @@ func (sar *SQLApplicationRepository) FetchActiveDeployments() ([]*ServiceCheck, 
 		return nil, err
 	}
 	return checks, nil
+}
+
+func (sar *SQLApplicationRepository) RemoveContainersOlderThan(targetTime *time.Time) error {
+	sql := "DELETE FROM container_tb WHERE last_updated_at < ?"
+	tx := sar.dataSource.Connection().Begin()
+	if err := tx.Exec(sql, targetTime).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit().Error
 }

@@ -364,6 +364,45 @@ func (so *SwarmOperator) DeployInternalDependency(ctx context.Context, order *pr
 	}
 }
 
+func (so *SwarmOperator) FetchContainers(ctx context.Context, identifiers []string, status providers.ContainersCallback) error {
+	//TODO: Implement call to update container state
+	logger := logging.GetInstance()
+	state := make(map[string][]*providers.Instance)
+	for _, identifier := range identifiers {
+		if service, _, err := so.dkr.ServiceInspectWithRaw(ctx, identifier, types.ServiceInspectOptions{}); err != nil {
+			return err
+		} else if service.Spec.TaskTemplate.Placement.Constraints[0] == "node.role==worker" {
+			if containers, err := so.RemoteContainers(ctx, service.ID, "", func(lines []byte) { logger.Infof("%s", string(lines)) }); err != nil {
+				return err
+			} else {
+				so.packInstanceDetails(service.ID, state, containers)
+			}
+		} else {
+			if containers, err := so.LocalContainers(ctx, service.ID, func(lines []byte) { logger.Infof("%s", string(lines)) }); err != nil {
+				return err
+			} else {
+				so.packInstanceDetails(service.ID, state, containers)
+			}
+		}
+	}
+	return nil
+}
+
+func (so *SwarmOperator) packInstanceDetails(serviceID string, state map[string][]*providers.Instance, containers []*ContainerDetails) {
+	state[serviceID] = make([]*providers.Instance, 0)
+	for _, container := range containers {
+		state[serviceID] = append(state[serviceID], &providers.Instance{
+			ID:        container.ID,
+			Node:      container.NodeID,
+			TaskID:    container.TaskID,
+			IP:        container.IPAddress,
+			Family:    container.AddressFamily,
+			ServiceID: serviceID,
+		})
+	}
+}
+
+/*
 func (so *SwarmOperator) initialize(ctx context.Context, advertiseAddr, listenAddr string) (string, error) {
 	return so.dkr.SwarmInit(ctx, swarm.InitRequest{
 		ListenAddr:      listenAddr,
@@ -387,6 +426,7 @@ func (so *SwarmOperator) initialize(ctx context.Context, advertiseAddr, listenAd
 		SubnetSize:       24,
 	})
 }
+*/
 
 // utilities
 func (so *SwarmOperator) networks(ctx context.Context) []swarm.NetworkAttachmentConfig {
@@ -481,7 +521,7 @@ func (so *SwarmOperator) internalDependencySpec(order *InternalSpecOrder) swarm.
 		},
 		TaskTemplate: swarm.TaskSpec{
 			Placement: &swarm.Placement{
-				Constraints: []string{"node.role == manager"},
+				Constraints: []string{"node.role==manager"},
 				MaxReplicas: 1,
 			},
 			ContainerSpec: &swarm.ContainerSpec{
@@ -492,7 +532,7 @@ func (so *SwarmOperator) internalDependencySpec(order *InternalSpecOrder) swarm.
 				Mounts:   order.Mounts,
 				TTY:      true,
 				Labels:   map[string]string{},
-				Hosts:    []string{"host.docker.internal:host-gateway"}, //<< Some nonsese like this //"host.docker.internal"
+				Hosts:    []string{}, //<< Some nonsese like this //"host.docker.internal"
 			},
 			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
 			Networks:      order.Networks,
