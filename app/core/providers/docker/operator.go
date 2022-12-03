@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -69,10 +70,9 @@ type ServiceSpecOrder struct {
 type ImageProgressCallback func(line []byte)
 
 type SwarmOperator struct {
-	dkr            *client.Client
-	pluginRegsitry plugins.PluginRegistry
-	agent          providers.AgentClient
-	configuration  DockerServiceConfigurations
+	dkr           *client.Client
+	agent         providers.AgentClient
+	configuration DockerServiceConfigurations
 }
 
 func NewSwarmOperator(agent providers.AgentClient, configuration DockerServiceConfigurations) *SwarmOperator {
@@ -277,30 +277,20 @@ func (so *SwarmOperator) ForwardServiceLogs(ctx context.Context, ws *websocket.C
 	}
 }
 
-func (so *SwarmOperator) InitializeManager(ctx context.Context, listenAddr, avertiseAddr string) (string, error) {
-	return so.dkr.SwarmInit(ctx, swarm.InitRequest{
-		ListenAddr:      listenAddr,
-		AdvertiseAddr:   avertiseAddr,
-		DataPathAddr:    avertiseAddr,
-		DataPathPort:    0,
-		ForceNewCluster: false,
-		Spec: swarm.Spec{Orchestration: swarm.OrchestrationConfig{TaskHistoryRetentionLimit: func(n int64) *int64 { return &n }(5)},
-			Raft: swarm.RaftConfig{
-				SnapshotInterval: 10000,
-				KeepOldSnapshots: func(n uint64) *uint64 { return &n }(0),
-			},
-			Dispatcher: swarm.DispatcherConfig{
-				HeartbeatPeriod: 5 * time.Second,
-			},
-			EncryptionConfig: swarm.EncryptionConfig{
-				AutoLockManagers: false,
-			},
-			CAConfig: swarm.CAConfig{NodeCertExpiry: 90 * 24 * time.Hour}},
-		AutoLockManagers: false,
-		Availability:     swarm.NodeAvailabilityActive,
-		DefaultAddrPool:  []string{"10.0.0.0/8"},
-		SubnetSize:       24,
-	})
+func (so *SwarmOperator) InitializeManager(ctx context.Context, listenAddr, advertiseAddr string) (string, error) {
+	cmd := fmt.Sprintf("docker swarm init --advertise-addr=%s --listen-addr=%s", advertiseAddr, listenAddr)
+	if _, err := exec.Command(cmd).Output(); err != nil {
+		return "", err
+	} else if details, err := so.dkr.SwarmInspect(ctx); err != nil {
+		return "", err
+	} else {
+		return details.ID, nil
+	}
+
+	// TODO: This generates a faulty swarm, the reason why is still not know but, will be uncovered
+	// Looking into programmatically creating swarms and joining nodes will be done over the CLI as exec commands as
+	//
+	//return so.initialize(ctx, advertiseAddr, listenAddr)
 }
 
 func (so *SwarmOperator) ParentNode(ctx context.Context) (*providers.ManagerDetails, error) {
@@ -374,6 +364,30 @@ func (so *SwarmOperator) DeployInternalDependency(ctx context.Context, order *pr
 	}
 }
 
+func (so *SwarmOperator) initialize(ctx context.Context, advertiseAddr, listenAddr string) (string, error) {
+	return so.dkr.SwarmInit(ctx, swarm.InitRequest{
+		ListenAddr:      listenAddr,
+		AdvertiseAddr:   advertiseAddr,
+		ForceNewCluster: false,
+		Spec: swarm.Spec{Orchestration: swarm.OrchestrationConfig{TaskHistoryRetentionLimit: func(n int64) *int64 { return &n }(5)},
+			Raft: swarm.RaftConfig{
+				SnapshotInterval: 10000,
+				KeepOldSnapshots: func(n uint64) *uint64 { return &n }(0),
+			},
+			Dispatcher: swarm.DispatcherConfig{
+				HeartbeatPeriod: 5 * time.Second,
+			},
+			EncryptionConfig: swarm.EncryptionConfig{
+				AutoLockManagers: false,
+			},
+			CAConfig: swarm.CAConfig{NodeCertExpiry: 90 * 24 * time.Hour}},
+		AutoLockManagers: false,
+		Availability:     swarm.NodeAvailabilityActive,
+		DefaultAddrPool:  []string{"10.0.0.0/8"},
+		SubnetSize:       24,
+	})
+}
+
 // utilities
 func (so *SwarmOperator) networks(ctx context.Context) []swarm.NetworkAttachmentConfig {
 	networks := make([]swarm.NetworkAttachmentConfig, 0)
@@ -414,8 +428,7 @@ func (so *SwarmOperator) portMapper(ctx context.Context, portSet nat.PortSet) ([
 		}
 		ports := make([]swarm.PortConfig, 0)
 		for port := range portSet {
-			publishPort := port.Int()
-			ports = append(ports, swarm.PortConfig{TargetPort: uint32(port.Int()), PublishedPort: uint32(publishPort), Protocol: swarm.PortConfigProtocol(port.Proto())})
+			ports = append(ports, swarm.PortConfig{TargetPort: uint32(port.Int()), Protocol: swarm.PortConfigProtocol(port.Proto())})
 		}
 		return ports, nil
 	}
