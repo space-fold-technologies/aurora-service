@@ -64,10 +64,10 @@ func (rc *retryClient) Leave(ctx context.Context, order *RemoveAgent, address, t
 	return rc.put(ctx, uri, token, order)
 }
 
-func (rc *retryClient) Containers(ctx context.Context, serviceId, address, token string) (*ContainerReport, error) {
+func (rc *retryClient) Containers(ctx context.Context, serviceId, address string) (*ContainerReport, error) {
 	uri := fmt.Sprintf("http://%s:2700/api/v1/aurora-agent/agents/%s/containers", address, serviceId)
 	report := &ContainerReport{}
-	if err := rc.get(ctx, uri, token, report); err != nil {
+	if err := rc.getNoAuth(ctx, uri, report); err != nil {
 		return nil, err
 	}
 	return report, nil
@@ -88,10 +88,23 @@ func (rc *retryClient) put(ctx context.Context, path, token string, in proto.Mes
 	return nil
 }
 
-func (rc *retryClient) get(ctx context.Context, path, token string, out proto.Message) error {
+// func (rc *retryClient) get(ctx context.Context, path, token string, out proto.Message) error {
+// 	if request, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil); err != nil {
+// 		return err
+// 	} else if response, err := rc.authorizedClient(request, token); err != nil {
+// 		return err
+// 	} else if response.StatusCode != 204 {
+// 		if _, err := io.ReadAll(response.Body); err != nil {
+// 			return err
+// 		}
+// 	}
+// 	return nil
+// }
+
+func (rc *retryClient) getNoAuth(ctx context.Context, path string, out proto.Message) error {
 	if request, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil); err != nil {
 		return err
-	} else if response, err := rc.authorizedClient(request, token); err != nil {
+	} else if response, err := rc.client.Do(request); err != nil {
 		return err
 	} else if response.StatusCode != 204 {
 		if _, err := io.ReadAll(response.Body); err != nil {

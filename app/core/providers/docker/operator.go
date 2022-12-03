@@ -129,14 +129,14 @@ func (so *SwarmOperator) LocalContainers(ctx context.Context, serviceID string, 
 	}
 }
 
-func (so *SwarmOperator) RemoteContainers(ctx context.Context, serviceID, token string, progress func(lines []byte)) ([]*ContainerDetails, error) {
+func (so *SwarmOperator) RemoteContainers(ctx context.Context, serviceID string, progress func(lines []byte)) ([]*ContainerDetails, error) {
 	retries := 0
 	details := make([]*ContainerDetails, 0)
 	if tasks, err := so.serviceTasks(ctx, serviceID, &retries); err != nil {
 		for _, task := range tasks {
 			if node, _, err := so.dkr.NodeInspectWithRaw(ctx, task.NodeID); err != nil {
 				return nil, err
-			} else if report, err := so.agent.Containers(ctx, serviceID, node.Status.Addr, token); err != nil {
+			} else if report, err := so.agent.Containers(ctx, serviceID, node.Status.Addr); err != nil {
 				return nil, err
 			} else {
 				for _, container := range report.GetContainers() {
@@ -204,7 +204,7 @@ func (so *SwarmOperator) DeployToWorker(ctx context.Context, registry plugins.Pl
 		return err
 	} else if resp, err := so.dkr.ServiceCreate(ctx, spec, types.ServiceCreateOptions{}); err != nil {
 		return err
-	} else if containers, err := so.RemoteContainers(ctx, resp.ID, order.Token, func(lines []byte) { reporter.Progress(lines) }); err != nil {
+	} else if containers, err := so.RemoteContainers(ctx, resp.ID, func(lines []byte) { reporter.Progress(lines) }); err != nil {
 		return err
 	} else {
 		report := providers.Report{
@@ -372,7 +372,7 @@ func (so *SwarmOperator) FetchContainers(ctx context.Context, identifiers []stri
 		if service, _, err := so.dkr.ServiceInspectWithRaw(ctx, identifier, types.ServiceInspectOptions{}); err != nil {
 			return err
 		} else if service.Spec.TaskTemplate.Placement.Constraints[0] == "node.role==worker" {
-			if containers, err := so.RemoteContainers(ctx, service.ID, "", func(lines []byte) { logger.Infof("%s", string(lines)) }); err != nil {
+			if containers, err := so.RemoteContainers(ctx, service.ID, func(lines []byte) { logger.Infof("%s", string(lines)) }); err != nil {
 				return err
 			} else {
 				so.packInstanceDetails(service.ID, state, containers)
