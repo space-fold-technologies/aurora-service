@@ -30,10 +30,10 @@ without having to pay for a PaaS or have a difficult time dealing with steps out
 
 #### STEPS ####
 
-On a computer with the desired golang compiler for the target architecture running linux , you can compile the golang source code by running `./full_build.sh`
+On a computer with the desired golang compiler for the target architecture running linux , you can compile the golang source code by running `./full_build.sh` \
 This might be x86_64, RISC-V, or ARM-64.
 
-This will result into a tar-ball with the target architecture for your servers that you can transfer using
+This will result into a tar-ball with the target architecture for your servers that you can transfer using scp
 
 ```bash
     scp aurora-service.tar.gz hostname@IP-ADDRESS:~
@@ -49,10 +49,19 @@ Create a new group and user
    sudo useradd -s /sbin/nologin --system -g aurora aurora
 ```
 
-Create a folder under `/etc~` to hold configurations and files for the `aurora-service daemon`
+Create a folder under `/etc` to hold configurations and files for the `aurora-service daemon`
 
 ```bash
     sudo mkdir -p /etc/aurora/configurations/
+    sudo mkdir -p /etc/aurora/keys/
+```
+
+Generate an rsa key pair with exact specified names inside `/etc/aurora/keys`
+
+```bash
+    openssl genrsa -out private-rsa-key.pem 2048 
+    openssl rsa -in private-rsa-key.pem -outform PEM -pubout -out public-rsa-key.pem
+    sudo mv private-rsa-key.pem public-rsa-key.pem /etc/aurora/keys/
 ```
 
 Change the folder and file ownership
@@ -136,7 +145,5 @@ To add more nodes to your cluster, you can use the [Aurora Agent](https://github
 - [x] Agent Node Integration
 - [ ] Agent Node Stats
 - [ ] Management Dashboard
-- [ ] Scheduled container checks
+- [x] Scheduled container checks
 - [ ] Integrated Services / Catridges[`PostgreSQL`,`MariaDB`,`Redis`,`RabbitMQ`]
-
-
