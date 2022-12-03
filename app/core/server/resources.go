@@ -157,7 +157,7 @@ func resourcesSettingsYml() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "resources/settings.yml", size: 628, mode: os.FileMode(511), modTime: time.Unix(1669631218, 0)}
+	info := bindataFileInfo{name: "resources/settings.yml", size: 628, mode: os.FileMode(511), modTime: time.Unix(1670057445, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
@@ -197,7 +197,7 @@ func resourcesMigrations1_core_tables_schemaUpSql() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "resources/migrations/1_core_tables_schema.up.sql", size: 3756, mode: os.FileMode(511), modTime: time.Unix(1670050053, 0)}
+	info := bindataFileInfo{name: "resources/migrations/1_core_tables_schema.up.sql", size: 3756, mode: os.FileMode(511), modTime: time.Unix(1670057445, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }

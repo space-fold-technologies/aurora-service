@@ -133,12 +133,19 @@ func (so *SwarmOperator) RemoteContainers(ctx context.Context, serviceID string,
 	retries := 0
 	details := make([]*ContainerDetails, 0)
 	if tasks, err := so.serviceTasks(ctx, serviceID, &retries); err != nil {
+		progress([]byte(fmt.Sprintf("failed to find tasks for service id::[%s]", serviceID)))
+		return nil, err
+	} else {
+		progress([]byte(fmt.Sprintf("found::[%d] tasks for service id::[%s]", len(tasks), serviceID)))
 		for _, task := range tasks {
 			if node, _, err := so.dkr.NodeInspectWithRaw(ctx, task.NodeID); err != nil {
+				progress([]byte(fmt.Sprintf("failed to get details on node with id::[%s] for service id::[%s]", task.NodeID, serviceID)))
 				return nil, err
 			} else if report, err := so.agent.Containers(ctx, serviceID, node.Status.Addr); err != nil {
+				progress([]byte(fmt.Sprintf("failed to get containers for service id::[%s]", serviceID)))
 				return nil, err
 			} else {
+				progress([]byte(fmt.Sprintf("found::[%d] containers for service id::[%s]", len(report.GetContainers()), serviceID)))
 				for _, container := range report.GetContainers() {
 					details = append(details, &ContainerDetails{
 						ID:            container.GetIdentifier(),
@@ -279,7 +286,7 @@ func (so *SwarmOperator) ForwardServiceLogs(ctx context.Context, ws *websocket.C
 
 func (so *SwarmOperator) InitializeManager(ctx context.Context, listenAddr, advertiseAddr string) (string, error) {
 	cmd := fmt.Sprintf("docker swarm init --advertise-addr=%s --listen-addr=%s", advertiseAddr, listenAddr)
-	if _, err := exec.Command(cmd).Output(); err != nil {
+	if _, err := exec.Command("/bin/sh", "-c", cmd).Output(); err != nil {
 		return "", err
 	} else if details, err := so.dkr.SwarmInspect(ctx); err != nil {
 		return "", err
