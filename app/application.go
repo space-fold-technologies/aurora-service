@@ -72,7 +72,7 @@ func (sr *ServiceResources) Initialize() {
 	sr.appservice = apps.NewService(sr.provider, sr.hasher, apps.NewRepository(sr.dataSource))
 	sr.setupControllers(sr.server.GetRegistry())
 	sr.scheduler = gocron.NewScheduler(time.UTC)
-	sr.scheduler.Every(5).Do(sr.appservice.UpdateContainers)
+	sr.scheduler.Every(5).Minutes().Do(sr.appservice.UpdateContainers)
 	sr.scheduler.StartAsync()
 }
 

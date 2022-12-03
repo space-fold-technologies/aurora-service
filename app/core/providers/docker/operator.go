@@ -151,16 +151,15 @@ func (so *SwarmOperator) RemoteContainers(ctx context.Context, serviceID string,
 						ID:            container.GetIdentifier(),
 						NodeID:        container.GetNodeIdentifier(),
 						TaskID:        container.GetTaskIdentifier(),
-						ServiceID:     serviceID,
+						ServiceID:     container.GetServiceIdentifier(),
 						IPAddress:     container.GetIpAddress(),
 						AddressFamily: uint(container.GetAddressFamily()),
 					})
 				}
-				return details, nil
 			}
 		}
 	}
-	return nil, fmt.Errorf("no service tasks found matching service id: %s, retries: %d", serviceID, retries)
+	return details, nil
 }
 
 func (so *SwarmOperator) DeployToManager(ctx context.Context, registry plugins.PluginRegistry, order *providers.DeploymentOrder, reporter *providers.Reporter) error {
