@@ -13,11 +13,12 @@ func main() {
 	mode := flag.String("mode", "run", " for the app run mode")
 	email := flag.String("email", "", "for admin email address")
 	password := flag.String("password", "", "for admin password")
+	config := flag.String("config", "", "path to the configuration file")
 	flag.Parse()
 	initializer := app.NewInitializer()
 	if *mode == "run" || *mode == "RUN" {
 		initializer.Migrate()
-		application := app.Application{}
+		application := app.Application{Path: *config}
 		application.Start()
 		c := make(chan os.Signal, 2)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)

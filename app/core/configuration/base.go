@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/space-fold-technologies/aurora-service/app/core/providers"
 	"github.com/space-fold-technologies/aurora-service/app/core/security"
@@ -38,6 +39,17 @@ func ParseFromResource() Configuration {
 		panic(err)
 	}
 	yaml.Unmarshal(yamlFile, &config)
+	return config
+}
+
+func ParseFromPath(filePath string) Configuration {
+	config := Configuration{}
+	if data, err := os.ReadFile(filePath); err != nil {
+		fmt.Println("Failed to open the file")
+		panic(err)
+	} else if err := yaml.Unmarshal(data, &config); err != nil {
+		panic(err)
+	}
 	return config
 }
 

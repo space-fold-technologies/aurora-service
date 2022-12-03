@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ type Application struct {
 	hashHandler      security.HashHandler
 	tokenHandler     security.TokenHandler
 	pluginRegistry   plugins.PluginRegistry
+	Path             string
 }
 
 func (a *Application) onStartUp() bool {
@@ -42,7 +44,12 @@ func (a *Application) onShutdown() bool {
 
 func (a *Application) Start() {
 	a.details = server.FetchApplicationDetails()
-	a.configs = configuration.ParseFromResource()
+	if _, err := os.Stat(a.Path); errors.Is(err, os.ErrNotExist) {
+		logging.GetInstance().Error(err)
+		a.configs = configuration.ParseFromResource()
+	} else {
+		a.configs = configuration.ParseFromPath(a.Path)
+	}
 	configurationPath := filepath.Join(a.configs.ProfileDIR, "configurations")
 	if _, err := os.Stat(configurationPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(configurationPath, fs.ModeAppend); err != nil {
