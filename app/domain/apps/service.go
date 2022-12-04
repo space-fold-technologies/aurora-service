@@ -238,6 +238,9 @@ func (as *AppService) UpdateContainers() {
 		for _, check := range checks {
 			identifiers = append(identifiers, check.ID)
 		}
+		if len(identifiers) == 0 {
+			return
+		}
 		if err := as.provider.FetchContainers(identifiers, func(state map[string][]*providers.Instance) {
 			for id, instances := range state {
 				logger.Infof("updating containers for service id[:%s]", id)

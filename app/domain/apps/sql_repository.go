@@ -142,7 +142,7 @@ func (sar *SQLApplicationRepository) AddContainers(orders []*ContainerOrder) err
 
 func (sar *SQLApplicationRepository) FetchContainer(identifier string) (*ContainerDetails, error) {
 	details := &ContainerDetails{}
-	sql := "SELECT n.address AS node_address, c.container_identifier FROM container_tb " +
+	sql := "SELECT n.address AS node_address, c.identifier AS container_identifier FROM container_tb AS c " +
 		"INNER JOIN node_tb AS n ON c.node_id = n.id " +
 		"WHERE c.identifier = ?"
 	connection := sar.dataSource.Connection()
