@@ -829,9 +829,9 @@ func (so *SwarmOperator) remoteAttach(ctx context.Context, rc *client.Client, ws
 	}
 	commander := providers.ShellLogger{Base: &providers.WebSocketWriter{Conn: ws}, Term: term}
 	//commander := providers.WebSocketWriter{Conn: ws}
-	if resp, err := so.dkr.ContainerExecCreate(ctx, container, options); err != nil {
+	if resp, err := rc.ContainerExecCreate(ctx, container, options); err != nil {
 		return err
-	} else if connection, err := so.dkr.ContainerExecAttach(ctx, resp.ID, types.ExecStartCheck{Detach: false, Tty: true}); err != nil {
+	} else if connection, err := rc.ContainerExecAttach(ctx, resp.ID, types.ExecStartCheck{Detach: false, Tty: true}); err != nil {
 		return err
 	} else {
 		defer connection.Close()
