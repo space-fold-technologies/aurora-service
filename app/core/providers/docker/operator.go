@@ -113,8 +113,10 @@ func (so *SwarmOperator) LocalContainers(ctx context.Context, serviceID string, 
 	filter := filters.NewArgs()
 	filter.Add("label", fmt.Sprintf("com.docker.swarm.service.id=%s", serviceID))
 	if containers, err := so.dkr.ContainerList(ctx, types.ContainerListOptions{Filters: filter}); err != nil {
+		progress(so.stateReport("service-step-failure", "container-check", fmt.Sprintf("failed to get containers for service id::[%s] Err::[%s]", serviceID, err.Error())))
 		return nil, err
 	} else {
+		progress(so.stateReport("service-step", "container-check", fmt.Sprintf("found::[%d] containers for service id::[%s]", len(containers), serviceID)))
 		for _, container := range containers {
 			details = append(details, &ContainerDetails{
 				ID:            container.ID,
@@ -133,19 +135,19 @@ func (so *SwarmOperator) RemoteContainers(ctx context.Context, serviceID string,
 	retries := 0
 	details := make([]*ContainerDetails, 0)
 	if tasks, err := so.serviceTasks(ctx, serviceID, &retries); err != nil {
-		progress([]byte(fmt.Sprintf("failed to find tasks for service id::[%s]", serviceID)))
+		progress(so.stateReport("service-step-failure", "inspection", fmt.Sprintf("failed to find tasks for service id::[%s]", serviceID)))
 		return nil, err
 	} else {
-		progress([]byte(fmt.Sprintf("found::[%d] tasks for service id::[%s]", len(tasks), serviceID)))
+		progress(so.stateReport("service-step", "inspection", fmt.Sprintf("found::[%d] tasks for service id::[%s]", len(tasks), serviceID)))
 		for _, task := range tasks {
 			if node, _, err := so.dkr.NodeInspectWithRaw(ctx, task.NodeID); err != nil {
-				progress([]byte(fmt.Sprintf("failed to get details on node with id::[%s] for service id::[%s]", task.NodeID, serviceID)))
+				progress(so.stateReport("service-step-failure", "inspection", fmt.Sprintf("failed to get details on node with id::[%s] for service id::[%s]", task.NodeID, serviceID)))
 				return nil, err
 			} else if report, err := so.agent.Containers(ctx, serviceID, node.Status.Addr); err != nil {
-				progress([]byte(fmt.Sprintf("failed to get containers for service id::[%s]", serviceID)))
+				progress(so.stateReport("service-step-failure", "container-check", fmt.Sprintf("failed to get containers for service id::[%s]", serviceID)))
 				return nil, err
 			} else {
-				progress([]byte(fmt.Sprintf("found::[%d] containers for service id::[%s]", len(report.GetContainers()), serviceID)))
+				progress(so.stateReport("service-step", "container-check", fmt.Sprintf("found::[%d] containers for service id::[%s]", len(report.GetContainers()), serviceID)))
 				for _, container := range report.GetContainers() {
 					details = append(details, &ContainerDetails{
 						ID:            container.GetIdentifier(),
@@ -230,6 +232,7 @@ func (so *SwarmOperator) DeployToWorker(ctx context.Context, registry plugins.Pl
 				ServiceID: resp.ID,
 			}
 		}
+		reporter.Progress(so.stateReport("service-step", "deployment-success", "deployment successful"))
 		reporter.Done(report)
 		return nil
 	}
@@ -865,4 +868,12 @@ func (so *SwarmOperator) remoteClient(workerIP string) (*client.Client, error) {
 	options = append(options, client.WithHost(fmt.Sprintf("tcp://%s:2375", workerIP)))
 	options = append(options, client.WithAPIVersionNegotiation())
 	return client.NewClientWithOpts(options...)
+}
+
+func (so *SwarmOperator) stateReport(status, step, progress string) []byte {
+	if data, err := json.Marshal(map[string]string{"status": status, "step": step, "progress": progress}); err != nil {
+		return []byte{}
+	} else {
+		return data
+	}
 }
