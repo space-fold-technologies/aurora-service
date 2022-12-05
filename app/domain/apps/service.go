@@ -246,6 +246,8 @@ func (as *AppService) UpdateContainers() {
 				logger.Infof("updating containers for service id[:%s]", id)
 				containers := make([]*ContainerOrder, 0)
 				for _, instance := range instances {
+					logger.Infof("instance ID::[%s] service ID::[%s] ip `address ::[%s] family ::[%s] node ID::[%s] task ID::[%s]",
+						instance.ID, instance.ServiceID, instance.IP, instance.Family, instance.Node, instance.TaskID)
 					containers = append(containers, &ContainerOrder{
 						Identifier: instance.ID,
 						IP:         instance.IP,

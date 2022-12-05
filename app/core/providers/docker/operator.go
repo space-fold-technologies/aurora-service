@@ -173,7 +173,7 @@ func (so *SwarmOperator) DeployToManager(ctx context.Context, registry plugins.P
 		return err
 	} else if resp, err := so.dkr.ServiceCreate(ctx, spec, types.ServiceCreateOptions{}); err != nil {
 		return err
-	} else if containers, err := so.LocalContainers(ctx, resp.ID, func(lines []byte) { reporter.Progress(lines) }); err != nil {
+	} else if containers, err := so.LocalContainers(ctx, resp.ID, func(lines []byte) { reporter.Progress([]byte(fmt.Sprintf("%s\n\r", string(lines)))) }); err != nil {
 		return err
 	} else {
 
@@ -210,7 +210,7 @@ func (so *SwarmOperator) DeployToWorker(ctx context.Context, registry plugins.Pl
 		return err
 	} else if resp, err := so.dkr.ServiceCreate(ctx, spec, types.ServiceCreateOptions{}); err != nil {
 		return err
-	} else if containers, err := so.RemoteContainers(ctx, resp.ID, func(lines []byte) { reporter.Progress(lines) }); err != nil {
+	} else if containers, err := so.RemoteContainers(ctx, resp.ID, func(lines []byte) { reporter.Progress([]byte(fmt.Sprintf("%s\n\r", string(lines)))) }); err != nil {
 		return err
 	} else {
 		report := providers.Report{
@@ -538,9 +538,9 @@ func (so *SwarmOperator) internalDependencySpec(order *InternalSpecOrder) swarm.
 				Mounts:   order.Mounts,
 				TTY:      true,
 				Labels:   map[string]string{},
-				Hosts:    []string{}, //<< Some nonsese like this //"host.docker.internal"
+				Hosts:    []string{}, //<< Some nonsense like this //"host.docker.internal"
 			},
-			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
+			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionOnFailure},
 			Networks:      order.Networks,
 		},
 		EndpointSpec: &swarm.EndpointSpec{
