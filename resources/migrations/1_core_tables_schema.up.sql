@@ -63,7 +63,7 @@ CREATE TABLE deployment_tb(
 
 CREATE TABLE container_tb(
    id INTEGER PRIMARY KEY AUTOINCREMENT,
-   identifier VARCHAR(36) NOT NULL,
+   identifier VARCHAR(36) NOT NULL UNIQUE,
    ip VARCHAR(64) NOT NULL,
    address_family INTEGER NOT NULL,
    application_id INTEGER NOT NULL,

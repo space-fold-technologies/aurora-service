@@ -113,8 +113,10 @@ func (so *SwarmOperator) LocalContainers(ctx context.Context, serviceID string, 
 	filter := filters.NewArgs()
 	filter.Add("label", fmt.Sprintf("com.docker.swarm.service.id=%s", serviceID))
 	if containers, err := so.dkr.ContainerList(ctx, types.ContainerListOptions{Filters: filter}); err != nil {
+		progress(so.stateReport("service-step-failure", "container-check", fmt.Sprintf("failed to get containers for service id::[%s] Err::[%s]", serviceID, err.Error())))
 		return nil, err
 	} else {
+		progress(so.stateReport("service-step", "container-check", fmt.Sprintf("found::[%d] containers for service id::[%s]", len(containers), serviceID)))
 		for _, container := range containers {
 			details = append(details, &ContainerDetails{
 				ID:            container.ID,
@@ -133,27 +135,33 @@ func (so *SwarmOperator) RemoteContainers(ctx context.Context, serviceID string,
 	retries := 0
 	details := make([]*ContainerDetails, 0)
 	if tasks, err := so.serviceTasks(ctx, serviceID, &retries); err != nil {
+		progress(so.stateReport("service-step-failure", "inspection", fmt.Sprintf("failed to find tasks for service id::[%s]", serviceID)))
+		return nil, err
+	} else {
+		progress(so.stateReport("service-step", "inspection", fmt.Sprintf("found::[%d] tasks for service id::[%s]", len(tasks), serviceID)))
 		for _, task := range tasks {
 			if node, _, err := so.dkr.NodeInspectWithRaw(ctx, task.NodeID); err != nil {
+				progress(so.stateReport("service-step-failure", "inspection", fmt.Sprintf("failed to get details on node with id::[%s] for service id::[%s]", task.NodeID, serviceID)))
 				return nil, err
 			} else if report, err := so.agent.Containers(ctx, serviceID, node.Status.Addr); err != nil {
+				progress(so.stateReport("service-step-failure", "container-check", fmt.Sprintf("failed to get containers for service id::[%s]", serviceID)))
 				return nil, err
 			} else {
+				progress(so.stateReport("service-step", "container-check", fmt.Sprintf("found::[%d] containers for service id::[%s]", len(report.GetContainers()), serviceID)))
 				for _, container := range report.GetContainers() {
 					details = append(details, &ContainerDetails{
 						ID:            container.GetIdentifier(),
 						NodeID:        container.GetNodeIdentifier(),
 						TaskID:        container.GetTaskIdentifier(),
-						ServiceID:     serviceID,
+						ServiceID:     container.GetServiceIdentifier(),
 						IPAddress:     container.GetIpAddress(),
 						AddressFamily: uint(container.GetAddressFamily()),
 					})
 				}
-				return details, nil
 			}
 		}
 	}
-	return nil, fmt.Errorf("no service tasks found matching service id: %s, retries: %d", serviceID, retries)
+	return details, nil
 }
 
 func (so *SwarmOperator) DeployToManager(ctx context.Context, registry plugins.PluginRegistry, order *providers.DeploymentOrder, reporter *providers.Reporter) error {
@@ -167,7 +175,7 @@ func (so *SwarmOperator) DeployToManager(ctx context.Context, registry plugins.P
 		return err
 	} else if resp, err := so.dkr.ServiceCreate(ctx, spec, types.ServiceCreateOptions{}); err != nil {
 		return err
-	} else if containers, err := so.LocalContainers(ctx, resp.ID, func(lines []byte) { reporter.Progress(lines) }); err != nil {
+	} else if containers, err := so.LocalContainers(ctx, resp.ID, func(lines []byte) { reporter.Progress([]byte(fmt.Sprintf("%s\n\r", string(lines)))) }); err != nil {
 		return err
 	} else {
 
@@ -204,7 +212,7 @@ func (so *SwarmOperator) DeployToWorker(ctx context.Context, registry plugins.Pl
 		return err
 	} else if resp, err := so.dkr.ServiceCreate(ctx, spec, types.ServiceCreateOptions{}); err != nil {
 		return err
-	} else if containers, err := so.RemoteContainers(ctx, resp.ID, func(lines []byte) { reporter.Progress(lines) }); err != nil {
+	} else if containers, err := so.RemoteContainers(ctx, resp.ID, func(lines []byte) { reporter.Progress([]byte(fmt.Sprintf("%s\n\r", string(lines)))) }); err != nil {
 		return err
 	} else {
 		report := providers.Report{
@@ -224,6 +232,7 @@ func (so *SwarmOperator) DeployToWorker(ctx context.Context, registry plugins.Pl
 				ServiceID: resp.ID,
 			}
 		}
+		reporter.Progress(so.stateReport("service-step", "deployment-success", "deployment successful"))
 		reporter.Done(report)
 		return nil
 	}
@@ -238,6 +247,7 @@ func (so *SwarmOperator) ForwardRemoteShell(ctx context.Context, ws *websocket.C
 	if rc, err := so.remoteClient(host); err != nil {
 		return err
 	} else {
+		defer rc.Close()
 		return so.remoteAttach(ctx, rc, ws, shell, containerId)
 	}
 }
@@ -279,7 +289,7 @@ func (so *SwarmOperator) ForwardServiceLogs(ctx context.Context, ws *websocket.C
 
 func (so *SwarmOperator) InitializeManager(ctx context.Context, listenAddr, advertiseAddr string) (string, error) {
 	cmd := fmt.Sprintf("docker swarm init --advertise-addr=%s --listen-addr=%s", advertiseAddr, listenAddr)
-	if _, err := exec.Command(cmd).Output(); err != nil {
+	if _, err := exec.Command("/bin/sh", "-c", cmd).Output(); err != nil {
 		return "", err
 	} else if details, err := so.dkr.SwarmInspect(ctx); err != nil {
 		return "", err
@@ -532,9 +542,9 @@ func (so *SwarmOperator) internalDependencySpec(order *InternalSpecOrder) swarm.
 				Mounts:   order.Mounts,
 				TTY:      true,
 				Labels:   map[string]string{},
-				Hosts:    []string{}, //<< Some nonsese like this //"host.docker.internal"
+				Hosts:    []string{}, //<< Some nonsense like this //"host.docker.internal"
 			},
-			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny},
+			RestartPolicy: &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionOnFailure},
 			Networks:      order.Networks,
 		},
 		EndpointSpec: &swarm.EndpointSpec{
@@ -792,6 +802,8 @@ func (so *SwarmOperator) localAttach(ctx context.Context, ws *websocket.Conn, sh
 }
 
 func (so *SwarmOperator) remoteAttach(ctx context.Context, rc *client.Client, ws *websocket.Conn, shell, container string) error {
+	logger := logging.GetInstance()
+	logger.Infof("CONTAINER ID: %s REMOTE MODE HOST: %s", container, rc.DaemonHost())
 	commands := so.commandsForExec("[ $(command -v bash) ] && exec bash -l || exec sh -l")
 	if shell != "" {
 		commands = append([]string{"/usr/bin/env", "TERM=" + shell}, commands...)
@@ -820,9 +832,9 @@ func (so *SwarmOperator) remoteAttach(ctx context.Context, rc *client.Client, ws
 	}
 	commander := providers.ShellLogger{Base: &providers.WebSocketWriter{Conn: ws}, Term: term}
 	//commander := providers.WebSocketWriter{Conn: ws}
-	if resp, err := so.dkr.ContainerExecCreate(ctx, container, options); err != nil {
+	if resp, err := rc.ContainerExecCreate(ctx, container, options); err != nil {
 		return err
-	} else if connection, err := so.dkr.ContainerExecAttach(ctx, resp.ID, types.ExecStartCheck{Detach: false, Tty: true}); err != nil {
+	} else if connection, err := rc.ContainerExecAttach(ctx, resp.ID, types.ExecStartCheck{Detach: false, Tty: true}); err != nil {
 		return err
 	} else {
 		defer connection.Close()
@@ -859,4 +871,12 @@ func (so *SwarmOperator) remoteClient(workerIP string) (*client.Client, error) {
 	options = append(options, client.WithHost(fmt.Sprintf("tcp://%s:2375", workerIP)))
 	options = append(options, client.WithAPIVersionNegotiation())
 	return client.NewClientWithOpts(options...)
+}
+
+func (so *SwarmOperator) stateReport(status, step, progress string) []byte {
+	if data, err := json.Marshal(map[string]string{"status": status, "step": step, "progress": progress}); err != nil {
+		return []byte{}
+	} else {
+		return data
+	}
 }

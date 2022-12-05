@@ -106,9 +106,11 @@ func (rc *retryClient) getNoAuth(ctx context.Context, path string, out proto.Mes
 		return err
 	} else if response, err := rc.client.Do(request); err != nil {
 		return err
-	} else if response.StatusCode != 204 {
-		if _, err := io.ReadAll(response.Body); err != nil {
+	} else if response.StatusCode == 200 {
+		if data, err := io.ReadAll(response.Body); err != nil {
 			return err
+		} else {
+			return proto.Unmarshal(data, out)
 		}
 	}
 	return nil
