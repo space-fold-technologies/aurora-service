@@ -247,6 +247,7 @@ func (so *SwarmOperator) ForwardRemoteShell(ctx context.Context, ws *websocket.C
 	if rc, err := so.remoteClient(host); err != nil {
 		return err
 	} else {
+		defer rc.Close()
 		return so.remoteAttach(ctx, rc, ws, shell, containerId)
 	}
 }
@@ -801,6 +802,8 @@ func (so *SwarmOperator) localAttach(ctx context.Context, ws *websocket.Conn, sh
 }
 
 func (so *SwarmOperator) remoteAttach(ctx context.Context, rc *client.Client, ws *websocket.Conn, shell, container string) error {
+	logger := logging.GetInstance()
+	logger.Infof("CONTAINER ID: %s REMOTE MODE HOST: %s", container, rc.DaemonHost())
 	commands := so.commandsForExec("[ $(command -v bash) ] && exec bash -l || exec sh -l")
 	if shell != "" {
 		commands = append([]string{"/usr/bin/env", "TERM=" + shell}, commands...)
