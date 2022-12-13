@@ -148,3 +148,11 @@ func (o *DependencyOrder) Image(digest string) string {
 	}
 	return noTag + "@" + digest
 }
+
+func (o *DependencyOrder) Env() []string {
+	unique := mapset.NewSet[string]()
+	for key, value := range o.EnvironmentVariables {
+		unique.Add(fmt.Sprintf("%s=%s", key, value))
+	}
+	return unique.ToSlice()
+}

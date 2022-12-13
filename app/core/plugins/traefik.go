@@ -15,14 +15,15 @@ const (
 )
 
 var (
-	LOGS_PATH         = "/etc/traefik/logs"
-	LETS_ENCRYPT_PATH = "/etc/traefik/acme"
+	LOGS_PATH         = "/traefik/logs"
+	LETS_ENCRYPT_PATH = "/traefik/acme"
 )
 
 type TraefikPlugin struct {
 	https                  bool
 	certResolverName       string
 	certResolverEmail      string
+	configDirectory        string
 	certResolverParameters map[string]string
 	domain                 string
 	network                string
@@ -30,7 +31,7 @@ type TraefikPlugin struct {
 	identifier             string
 }
 
-func NewTraefikPlugin(network, domain string, https bool, certResolverName, certResolverEmail string, certResolverParameters map[string]string, provider providers.Provider) Plugin {
+func NewTraefikPlugin(network, domain, configDirectory string, https bool, certResolverName, certResolverEmail string, certResolverParameters map[string]string, provider providers.Provider) Plugin {
 	instance := new(TraefikPlugin)
 	instance.network = network
 	instance.https = https
@@ -38,6 +39,7 @@ func NewTraefikPlugin(network, domain string, https bool, certResolverName, cert
 	instance.certResolverEmail = certResolverEmail
 	instance.certResolverParameters = certResolverParameters
 	instance.domain = domain
+	instance.configDirectory = configDirectory
 	instance.provider = provider
 	return instance
 }
@@ -158,9 +160,9 @@ func (tp *TraefikPlugin) commands() []string {
 func (tp *TraefikPlugin) mounts() map[string]string {
 	volumes := make(map[string]string)
 	volumes["/var/run/docker.sock"] = "/var/run/docker.sock"
-	volumes[LOGS_PATH] = "/var/logs"
+	volumes[tp.configDirectory+LOGS_PATH] = "/var/logs"
 	if tp.https {
-		volumes[LETS_ENCRYPT_PATH] = "/letsencrypt"
+		volumes[tp.configDirectory+LETS_ENCRYPT_PATH] = "/letsencrypt"
 	}
 	return volumes
 }
