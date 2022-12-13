@@ -56,6 +56,8 @@ Create a folder under `/etc` to hold configurations and files for the `aurora-se
 ```bash
     sudo mkdir -p /etc/aurora/configurations/
     sudo mkdir -p /etc/aurora/keys/
+    sudo mkdir -p /etc/aurora/traefik/logs
+    sudo mkdir -p /etc/aurora/traefik/acme
 ```
 
 Generate an rsa key pair with exact specified names inside `/etc/aurora/keys`
@@ -70,7 +72,11 @@ Change the folder and file ownership
 
 ```bash
     sudo chown -R aurora:aurora /etc/aurora/configurations 
+    sudo chown -R aurora:aurora /etc/aurora/traefik/logs
+    sudo chown -R aurora:aurora /etc/aurora/traefik/acme
     sudo chown -R 755 /etc/aurora/configurations
+    sudo chown -R 755 /etc/aurora/traefik/logs
+    sudo chown -R 755 /etc/aurora/traefik/acme
 ```
 
 Create a systemd file

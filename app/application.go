@@ -64,6 +64,7 @@ func (sr *ServiceResources) Initialize() {
 		sr.pluginRegistry.Put(plugins.REVERSE_PROXY, plugins.NewTraefikPlugin(
 			fmt.Sprintf("%s-%s", sr.parameters.NetworkPrefix, sr.parameters.NetworkName),
 			sr.parameters.Domain,
+			sr.parameters.ProfileDIR,
 			sr.parameters.Https,
 			sr.parameters.CertResolverName,
 			sr.parameters.CertResolverEmail,

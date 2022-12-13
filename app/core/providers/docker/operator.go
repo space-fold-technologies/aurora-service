@@ -50,6 +50,7 @@ type InternalSpecOrder struct {
 	Mounts   []mount.Mount
 	Networks []swarm.NetworkAttachmentConfig
 	Ports    []swarm.PortConfig
+	Envs     []string
 }
 
 type ServiceSpecOrder struct {
@@ -365,6 +366,7 @@ func (so *SwarmOperator) DeployInternalDependency(ctx context.Context, order *pr
 		Mounts:   mounts,
 		Networks: so.networks(ctx),
 		Ports:    ports,
+		Envs:     order.Env(),
 	})
 	if resp, err := so.dkr.ServiceCreate(ctx, specification, types.ServiceCreateOptions{}); err != nil {
 		logging.GetInstance().Error(err)
@@ -537,9 +539,9 @@ func (so *SwarmOperator) internalDependencySpec(order *InternalSpecOrder) swarm.
 			ContainerSpec: &swarm.ContainerSpec{
 				Hostname: order.Name,
 				Image:    order.Image,
-				Env:      []string{},
 				Command:  order.Command,
 				Mounts:   order.Mounts,
+				Env:      order.Envs,
 				TTY:      true,
 				Labels:   map[string]string{},
 				Hosts:    []string{}, //<< Some nonsense like this //"host.docker.internal"
