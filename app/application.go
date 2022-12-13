@@ -67,6 +67,7 @@ func (sr *ServiceResources) Initialize() {
 			sr.parameters.Https,
 			sr.parameters.CertResolverName,
 			sr.parameters.CertResolverEmail,
+			sr.parameters.CertificateResolverParameters,
 			sr.provider))
 	}
 	sr.appservice = apps.NewService(sr.provider, sr.hasher, apps.NewRepository(sr.dataSource))

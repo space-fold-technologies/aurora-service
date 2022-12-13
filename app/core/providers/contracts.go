@@ -129,13 +129,14 @@ type NodeDetails struct {
 }
 
 type DependencyOrder struct {
-	ID      string
-	Name    string
-	URI     string
-	Digest  string
-	Ports   []int
-	Volumes map[string]string
-	Command []string
+	ID                   string
+	Name                 string
+	URI                  string
+	Digest               string
+	Ports                []int
+	Volumes              map[string]string
+	Command              []string
+	EnvironmentVariables map[string]string
 }
 
 func (o *DependencyOrder) Image(digest string) string {

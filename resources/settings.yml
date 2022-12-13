@@ -11,6 +11,8 @@ port: 1200
 https: false
 cert-resolver-name: letsencrypt
 cert-resolver-email: email.com
+cert-resolver-parameters:
+  key: val
 network-name: default
 network-prefix: aurora
 plugins:
