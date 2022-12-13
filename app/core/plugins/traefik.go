@@ -20,21 +20,23 @@ var (
 )
 
 type TraefikPlugin struct {
-	https             bool
-	certResolverName  string
-	certResolverEmail string
-	domain            string
-	network           string
-	provider          providers.Provider
-	identifier        string
+	https                  bool
+	certResolverName       string
+	certResolverEmail      string
+	certResolverParameters map[string]string
+	domain                 string
+	network                string
+	provider               providers.Provider
+	identifier             string
 }
 
-func NewTraefikPlugin(network, domain string, https bool, certResolverName, certResolverEmail string, provider providers.Provider) Plugin {
+func NewTraefikPlugin(network, domain string, https bool, certResolverName, certResolverEmail string, certResolverParameters map[string]string, provider providers.Provider) Plugin {
 	instance := new(TraefikPlugin)
 	instance.network = network
 	instance.https = https
 	instance.certResolverName = certResolverName
 	instance.certResolverEmail = certResolverEmail
+	instance.certResolverParameters = certResolverParameters
 	instance.domain = domain
 	instance.provider = provider
 	return instance
@@ -62,13 +64,14 @@ func (tp *TraefikPlugin) OnStartUp() error {
 		ports = append(ports, 443)
 	}
 	if identifier, err := tp.provider.DeployDependency(&providers.DependencyOrder{
-		ID:      "traefik-plugin",
-		Name:    "internal-traefik-proxy",
-		URI:     "traefik:2.9.5",
-		Digest:  "sha256:6c37f2135af79e0c2e387653ff3ab9abf95eb393439f07cfcfa5e06fd4bb10bb",
-		Ports:   ports,
-		Volumes: tp.mounts(),
-		Command: tp.commands(),
+		ID:                   "traefik-plugin",
+		Name:                 "internal-traefik-proxy",
+		URI:                  "traefik:2.9.6",
+		Digest:               "sha256:0f22b9ca5a3bacd50c43ca193e1970d825fe2320ffc6222fec1e2e81b9a23393",
+		Ports:                ports,
+		Volumes:              tp.mounts(),
+		Command:              tp.commands(),
+		EnvironmentVariables: tp.certResolverParameters,
 	}); err != nil {
 		return err
 	} else {

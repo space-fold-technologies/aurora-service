@@ -23,6 +23,7 @@ type Configuration struct {
 	Https                          bool                           `yaml:"https"`
 	CertResolverName               string                         `yaml:"cert-resolver-name"`
 	CertResolverEmail              string                         `yaml:"cert-resolver-email"`
+	CertificateResolverParameters  map[string]string              `yaml:"cert-resolver-parameters"`
 	SessionDuration                int                            `yaml:"admin-session-duration"`
 	EncryptionParameters           *security.EncryptionParameters `yaml:"encryption"`
 	AgentParameters                *providers.ClientConfiguration `yaml:"agent-client"`
